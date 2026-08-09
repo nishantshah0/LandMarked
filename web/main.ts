@@ -310,6 +310,28 @@ function refreshDistance(): void {
 
 /* ---------------- landmark sheet ---------------- */
 
+// Category strings come straight from OSM tag values (see server/seed.ts
+// categoryOf) — that space is wide (museum, viewpoint, castle, clock, ...),
+// so this only names the categories that actually dominate the seeded set.
+// Anything else, including the literal 'place' fallback, falls through to
+// default.svg rather than a missing image.
+const NAMED_CATEGORY_ICONS = new Set([
+  'park',
+  'artwork',
+  'memorial',
+  'attraction',
+  'place_of_worship',
+  'gallery',
+  'arts_centre',
+  'theatre',
+  'fountain',
+])
+
+function categoryIconUrl(category: string): string {
+  const key = NAMED_CATEGORY_ICONS.has(category) ? category : 'default'
+  return `/brand/category/${key}.svg`
+}
+
 function photoStrip(photos: Photo[]): string {
   if (photos.length === 0) {
     return `<p class="none">No one has photographed this yet.</p>`
@@ -348,11 +370,15 @@ async function openSheet(id: string): Promise<void> {
 
   $('sheetBody').innerHTML = `
     <div class="sheet-head">
-      <div>
-        <h2>${l.name}</h2>
-        <p class="meta">${TIER_LABEL[l.tier]} · ${l.category}${
-          l.photoCount ? ` · seen by ${l.photoCount} ${l.photoCount === 1 ? 'person' : 'people'}` : ''
-        }</p>
+      <div class="sheet-head-main">
+        <img class="cat-icon" src="${categoryIconUrl(l.category)}" width="28" height="28" alt=""
+             onerror="this.style.display='none'" />
+        <div>
+          <h2>${l.name}</h2>
+          <p class="meta">${TIER_LABEL[l.tier]} · ${l.category}${
+            l.photoCount ? ` · seen by ${l.photoCount} ${l.photoCount === 1 ? 'person' : 'people'}` : ''
+          }</p>
+        </div>
       </div>
       <span id="dist" class="dist">—</span>
     </div>

@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <radialGradient id="g" cx="32%" cy="28%" r="85%">
+      <stop offset="0%" stop-color="#42464F"/>
+      <stop offset="55%" stop-color="#202329"/>
+      <stop offset="100%" stop-color="#0E0F12"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F7F5EF" stop-opacity="0.55"/>
+      <stop offset="45%" stop-color="#F7F5EF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35"/>
+    </linearGradient>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.2"/>
+    </filter>
+  </defs>
+
+  <!-- glass body -->
+  <circle cx="32" cy="32" r="30" fill="url(#g)"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="url(#rim)" stroke-width="1.6"/>
+
+  <!-- brand tinted glow so this reads as SEEN glass, not stock glass -->
+  <circle cx="32" cy="32" r="30" fill="#E5533D" opacity="0.10"/>
+
+  <!-- specular highlight -->
+  <ellipse cx="21" cy="16" rx="15" ry="8" fill="#FFFFFF" opacity="0.5" filter="url(#soft)"
+           transform="rotate(-18 21 16)"/>
+  <ellipse cx="21" cy="16" rx="7" ry="3.4" fill="#FFFFFF" opacity="0.6"
+           transform="rotate(-18 21 16)"/>
+
+  <!-- the pictogram, reading through the glass -->
+  <g transform="translate(8 8)" opacity="0.96">
+    <path fill="#F7F5EF" d="
+    M32 6
+    C 35 6 38 9 38 12
+    C 38 14 37 15.5 35.5 16.8
+    L 19 33.3
+    L 14 38.3
+    L 9.7 34
+    L 14.7 29
+    L 31.2 12.5
+    C 32.5 11 34 10 34 8
+    C 34 7 33.2 6 32 6 Z"/>
+  <path fill="#F7F5EF" d="M14 38.3 L 9.7 34 L 6 44 Z"/>
+  </g>
+
+  <!-- bottom-edge reflection -->
+  <path d="M10 46 A22 22 0 0 0 54 46" fill="none" stroke="#F7F5EF" stroke-opacity="0.12"
+        stroke-width="2" stroke-linecap="round"/>
+</svg>

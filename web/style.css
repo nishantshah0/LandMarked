@@ -367,6 +367,20 @@ body {
   gap: 12px;
 }
 
+.sheet-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cat-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  /* SVGs, small on screen — sharpen instead of blurring at odd zoom levels */
+  image-rendering: -webkit-optimize-contrast;
+}
+
 .sheet h2 {
   font-family: var(--serif);
   font-size: 23px;
