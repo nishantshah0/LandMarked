@@ -1,3 +1,4 @@
+import './env' // must stay first — see server/env.ts
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, normalize as normPath } from 'node:path'
