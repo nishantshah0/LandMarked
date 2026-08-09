@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The colour of the neighbourhood — SEEN</title>
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/dashboard.css" />
+  </head>
+  <body class="dash">
+    <header class="dhead">
+      <div>
+        <h1>The colour of the neighbourhood</h1>
+        <p>
+          Measured from every photograph anyone has taken here. Nothing on this page is estimated or
+          entered by hand — it is arithmetic over real pixels, recomputed as each photo arrives.
+        </p>
+      </div>
+      <div class="right">
+        <a class="chip" href="/">The map</a>
+        <span id="live" class="livechip"><i></i><span id="liveLabel">connecting</span></span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div id="cityPalette" class="citypalette"></div>
+      <p id="cityReading" class="reading">—</p>
+    </section>
+
+    <section class="counters">
+      <div class="counter"><i>photographs</i><b id="cPhotos">—</b></div>
+      <div class="counter"><i>claims</i><b id="cClaims">—</b></div>
+      <div class="counter"><i>held right now</i><b id="cActive">—</b></div>
+      <div class="counter"><i>people</i><b id="cPlayers">—</b></div>
+      <div class="counter"><i>places</i><b id="cPlaces">—</b></div>
+    </section>
+
+    <div class="two">
+      <section class="card">
+        <h2>The day, hour by hour</h2>
+        <p class="sub">each row is the blended colour of everything photographed in that hour</p>
+        <div id="byHour" class="byhour"></div>
+      </section>
+
+      <section class="card">
+        <h2>Verification</h2>
+        <p class="sub">
+          every claim attempt is logged, passed or failed — this is the system's real accuracy, not a
+          sample
+        </p>
+        <div id="verify" class="verify"></div>
+        <h3>Why claims were refused</h3>
+        <div id="rejections" class="bars"></div>
+      </section>
+    </div>
+
+    <section class="card wide">
+      <h2>Claims over time</h2>
+      <p class="sub">fifteen-minute buckets</p>
+      <svg id="spark" viewBox="0 0 960 130" preserveAspectRatio="none"></svg>
+      <div id="sparkAxis" class="axis"></div>
+    </section>
+
+    <div class="two">
+      <section class="card">
+        <h2>Standings</h2>
+        <ol id="leaders" class="rank"></ol>
+      </section>
+      <section class="card">
+        <h2>Most contested</h2>
+        <p class="sub">places claimed and re-claimed most often</p>
+        <ol id="contested" class="rank"></ol>
+      </section>
+    </div>
+
+    <section class="card wide">
+      <h2>Extremes</h2>
+      <div id="extremes" class="extremes"></div>
+    </section>
+
+    <p class="dfoot">
+      Made at SummerHacks&nbsp;’26, Toronto. Raw data: <a href="/api/state">/api/state</a>
+    </p>
+
+    <script type="module" src="/dashboard.ts"></script>
+  </body>
+</html>

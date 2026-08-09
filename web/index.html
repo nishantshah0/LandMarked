@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>SEEN — every photo anyone took here</title>
+    <meta name="description" content="Claim a place with a photo. The place keeps every photo, forever." />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <header class="top">
+      <div class="brand">SEEN<em>every photo anyone took here</em></div>
+      <div class="top-right">
+        <a class="chip" href="/dashboard.html">The colour</a>
+        <button id="meBtn" class="chip">Who are you?</button>
+      </div>
+    </header>
+
+    <div id="colourbar" class="colourbar" title="the neighbourhood's colour, from every photo so far"></div>
+
+    <!-- landmark sheet -->
+    <section id="sheet" class="sheet" hidden>
+      <button id="sheetClose" class="sheet-close" aria-label="close">×</button>
+      <div class="sheet-grab"></div>
+      <div id="sheetBody"></div>
+    </section>
+
+    <!-- capture / result -->
+    <div id="modal" class="modal" hidden>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+
+    <input id="camera" type="file" accept="image/*" capture="environment" hidden />
+
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
