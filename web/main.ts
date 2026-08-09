@@ -51,8 +51,19 @@ const map = new maplibregl.Map({
   attributionControl: { compact: true },
 })
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
+// debug handle; harmless in production
+;(window as unknown as { __map: maplibregl.Map }).__map = map
 
 let meMarker: maplibregl.Marker | null = null
+
+// Markers cannot be projected until the style is up. The socket often beats it,
+// so anything that arrives early waits here rather than landing at 0,0.
+let mapReady = false
+map.on('load', () => {
+  mapReady = true
+  syncMarkers()
+})
+map.on('error', (e) => console.warn('[map]', e.error?.message ?? e))
 
 function markerEl(l: LandmarkState): HTMLElement {
   const el = document.createElement('button')
@@ -72,6 +83,7 @@ function markerEl(l: LandmarkState): HTMLElement {
 }
 
 function syncMarkers(): void {
+  if (!mapReady) return
   for (const l of landmarks) {
     const existing = markers.get(l.id)
     if (existing) existing.remove()
@@ -200,9 +212,13 @@ async function openSheet(id: string): Promise<void> {
         ? `<div class="owner" style="--oc:${owned.avatarColor}"><b>${owned.handle}</b> holds this for ${mins} more min</div>`
         : `<div class="owner free">Unclaimed — be the one who takes it</div>`
     }
-    <button id="claimBtn" class="claim" ${owned ? 'disabled' : ''}>${
-      owned ? 'Held right now' : 'Take the photo'
-    }</button>
+    <div class="actions">
+      <button id="claimBtn" class="claim" ${owned ? 'disabled' : ''}>${
+        owned ? 'Held right now' : 'Take the photo'
+      }</button>
+      <button id="dirBtn" class="claim ghost2">Walk me there</button>
+    </div>
+    <div id="routeInfo" class="routeinfo"></div>
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
   `
@@ -212,12 +228,77 @@ async function openSheet(id: string): Promise<void> {
     if (!getHandle() && !askHandle()) return
     ;($('camera') as HTMLInputElement).click()
   }
+  const dir = document.getElementById('dirBtn')
+  if (dir) dir.onclick = () => void showRoute(l.id)
   refreshDistance()
+}
+
+/* ---------------- walking route (§3.10) ---------------- */
+
+interface RouteLine {
+  type: 'LineString'
+  coordinates: [number, number][]
+}
+
+async function showRoute(to: string): Promise<void> {
+  if (!here) return
+  const info = document.getElementById('routeInfo')
+  if (info) info.textContent = 'Finding the way…'
+  try {
+    const r = (await (
+      await fetch(`/api/route?fromLat=${here.lat}&fromLng=${here.lng}&to=${encodeURIComponent(to)}`)
+    ).json()) as {
+      fallback: boolean
+      distance_m: number
+      duration_s: number
+      geometry: RouteLine
+    }
+    if (mapReady) {
+      const data = { type: 'Feature' as const, properties: {}, geometry: r.geometry }
+      const src = map.getSource('route') as maplibregl.GeoJSONSource | undefined
+      if (src) {
+        src.setData(data)
+      } else {
+        map.addSource('route', { type: 'geojson', data })
+        map.addLayer({
+          id: 'route',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#17181c',
+            'line-width': 4,
+            'line-opacity': 0.75,
+            'line-dasharray': r.fallback ? [1.5, 2] : [1, 0],
+          },
+        })
+      }
+      if (map.getLayer('route')) {
+        map.setPaintProperty('route', 'line-dasharray', r.fallback ? [1.5, 2] : [1, 0])
+      }
+    }
+    if (info) {
+      const mins = Math.max(1, Math.round(r.duration_s / 60))
+      info.textContent = `${fmtDistance(r.distance_m)} · about ${mins} min on foot${
+        r.fallback ? ' (as the crow flies)' : ''
+      }`
+    }
+  } catch {
+    if (info) info.textContent = 'Routing unavailable — follow the map'
+  }
+}
+
+function clearRoute(): void {
+  if (mapReady && map.getLayer('route')) {
+    map.removeLayer('route')
+    map.removeSource('route')
+  }
 }
 
 function closeSheet(): void {
   openId = null
   $('sheet').setAttribute('hidden', '')
+  clearRoute()
 }
 
 /* ---------------- capture → claim ---------------- */
@@ -260,10 +341,19 @@ $('camera').addEventListener('change', async (e) => {
       return
     }
 
+    const chips = (p?: [number, number, number][]): string =>
+      p && p.length
+        ? p.slice(0, 5).map((c) => `<i style="background:${hex(c)}"></i>`).join('')
+        : '<i class="nochip"></i>'
     showModal(`
       <div class="verdict good">
         <h2>Claimed</h2>
+        <img class="yours" src="${dataUrl}" alt="your photograph" />
         <p class="shift">${res.shifted ?? ''}</p>
+        <div class="beforeafter">
+          <div><i class="ba-label">before</i><span class="chips">${chips(res.beforePalette)}</span></div>
+          <div><i class="ba-label">after you</i><span class="chips">${chips(res.afterPalette)}</span></div>
+        </div>
         <p class="fine">${Math.round(res.distanceM ?? 0)}m from the marker${
           res.confidence ? ` · verified at ${res.confidence}% confidence` : ''
         } · +${res.points ?? 0} points</p>
@@ -314,14 +404,16 @@ function connect(): void {
     } else if (m.t === 'claimed') {
       const i = landmarks.findIndex((l) => l.id === m.landmark.id)
       if (i >= 0) landmarks[i] = m.landmark
-      const old = markers.get(m.landmark.id)
-      if (old) old.remove()
-      markers.set(
-        m.landmark.id,
-        new maplibregl.Marker({ element: markerEl(m.landmark) })
-          .setLngLat([m.landmark.lng, m.landmark.lat])
-          .addTo(map),
-      )
+      if (mapReady) {
+        const old = markers.get(m.landmark.id)
+        if (old) old.remove()
+        markers.set(
+          m.landmark.id,
+          new maplibregl.Marker({ element: markerEl(m.landmark) })
+            .setLngLat([m.landmark.lng, m.landmark.lat])
+            .addTo(map),
+        )
+      }
     } else if (m.t === 'tick') {
       paintColourbar(m.stats.city.palette)
     }
@@ -338,3 +430,12 @@ paintHandle()
 watchMe()
 connect()
 setInterval(refreshDistance, 4000)
+
+// One-time explainer — a stranger's first 10 seconds, then never again.
+if (!localStorage.getItem('seen_intro')) {
+  $('intro').removeAttribute('hidden')
+  $('introOk').onclick = () => {
+    localStorage.setItem('seen_intro', '1')
+    $('intro').setAttribute('hidden', '')
+  }
+}

@@ -6,15 +6,20 @@ import { haversineM } from '../shared/geo'
 import type { Landmark } from '../shared/types'
 import { insertLandmarks, landmarkCount } from './db'
 
+// Density comes from the small stuff — murals, memorials, fountains, clocks —
+// not from famous sites. Wide tag list on purpose.
+const B = `(${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east})`
 const QUERY = `[out:json][timeout:90];
 (
-  node["tourism"~"attraction|artwork|museum|viewpoint|gallery"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
-  node["historic"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
-  node["amenity"~"place_of_worship|theatre|arts_centre|fountain|library"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
-  node["leisure"~"park|stadium|garden"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
-  way["tourism"~"attraction|museum|artwork"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
-  way["historic"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
-  way["leisure"~"park|garden"](${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east});
+  node["tourism"~"attraction|artwork|museum|viewpoint|gallery|zoo"]${B};
+  way["tourism"~"attraction|museum|zoo"]${B};
+  node["historic"]${B};
+  way["historic"]${B};
+  node["artwork_type"]${B};
+  node["memorial"]${B};
+  node["amenity"~"place_of_worship|theatre|arts_centre|fountain|clock|library"]${B};
+  way["leisure"~"park|garden|stadium|nature_reserve"]${B};
+  node["leisure"~"park|garden"]${B};
 );
 out center tags;`
 

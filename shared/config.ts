@@ -20,7 +20,7 @@ export const BBOX = {
 }
 
 /** Nearest N landmarks to the venue. Small on purpose — see the note on BBOX. */
-export const MAX_LANDMARKS = 30
+export const MAX_LANDMARKS = 40
 
 export const CFG = {
   claimHours: 3,

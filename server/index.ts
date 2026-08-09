@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { WebSocketServer, WebSocket } from 'ws'
 import { CFG, TIER_POINTS, VENUE } from '../shared/config'
 import { dHash, hamming, haversineM } from '../shared/geo'
+// (route proxy uses haversineM for its fallback)
 import { hex } from '../shared/palette'
 import type {
   ClaimResponse,
@@ -253,6 +254,8 @@ async function handleClaim(req: IncomingMessage, res: ServerResponse): Promise<v
     distanceM,
     points: TIER_POINTS[landmark.tier],
     shifted,
+    beforePalette: before.palette,
+    afterPalette: after.palette,
   } satisfies ClaimResponse)
 
   broadcast({
@@ -299,6 +302,61 @@ const server = createServer((req, res) => {
       console.error('[seen] claim failed:', e)
       json(res, 500, { ok: false, reason: 'no_photo', message: 'Something broke — try again' })
     })
+    return
+  }
+
+  // Thin proxy to OSRM's public router, with a straight-line fallback so the
+  // "walk me there" flow degrades instead of breaking when the shared community
+  // server is slow. (§3.10 of the plan)
+  if (url === '/api/route') {
+    const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '')
+    const fromLat = Number(q.get('fromLat'))
+    const fromLng = Number(q.get('fromLng'))
+    const to = byId.get(q.get('to') ?? '')
+    if (!to || !Number.isFinite(fromLat) || !Number.isFinite(fromLng)) {
+      json(res, 400, { error: 'bad params' })
+      return
+    }
+    const fallback = (): void => {
+      const d = haversineM(fromLat, fromLng, to.lat, to.lng)
+      json(res, 200, {
+        fallback: true,
+        distance_m: Math.round(d),
+        duration_s: Math.round(d / 1.35), // average walking speed
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [fromLng, fromLat],
+            [to.lng, to.lat],
+          ],
+        },
+      })
+    }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 6000)
+    fetch(
+      `https://router.project-osrm.org/route/v1/foot/${fromLng},${fromLat};${to.lng},${to.lat}?overview=full&geometries=geojson`,
+      { signal: ctrl.signal, headers: { 'user-agent': 'SEEN/1.0 (hackathon)' } },
+    )
+      .then(async (r) => {
+        clearTimeout(t)
+        if (!r.ok) return fallback()
+        const body = (await r.json()) as {
+          routes?: { geometry: unknown; distance: number; duration: number }[]
+        }
+        const route = body.routes?.[0]
+        if (!route) return fallback()
+        json(res, 200, {
+          fallback: false,
+          distance_m: Math.round(route.distance),
+          duration_s: Math.round(route.duration),
+          geometry: route.geometry,
+        })
+      })
+      .catch(() => {
+        clearTimeout(t)
+        fallback()
+      })
     return
   }
 

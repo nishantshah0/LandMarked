@@ -140,6 +140,9 @@ export interface ClaimResponse {
   points?: number
   /** how this photo moved the neighbourhood's colour — the payoff line */
   shifted?: string
+  /** the neighbourhood's palette before and after this one photograph */
+  beforePalette?: [number, number, number][]
+  afterPalette?: [number, number, number][]
 }
 
 export interface ArchiveResponse {

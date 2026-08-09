@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: seen
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: PORT
+        value: 8787
+      # Optional: enables Claude vision verification. Without it, claims pass on
+      # GPS + duplicate-photo checks alone and are logged as unverified.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+    disk:
+      name: seen-data
+      mountPath: /app/data
+      sizeGB: 1
