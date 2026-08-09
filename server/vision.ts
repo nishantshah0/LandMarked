@@ -10,7 +10,11 @@
 
 import { askJSON, providers } from './llm'
 
-const CLAUDE_MODEL = (): string => process.env.VISION_MODEL ?? 'claude-opus-5'
+// Haiku is the cheapest Claude ($1/$5 per 1M against Opus's $5/$25) and this is
+// the call it suits best: one photo, one plausible-or-not judgement, on the
+// critical path of a claim where latency is felt. Override with VISION_MODEL if
+// refusals ever look careless.
+const CLAUDE_MODEL = (): string => process.env.VISION_MODEL ?? 'claude-haiku-4-5'
 const GEMINI_MODEL = (): string => process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash'
 
 export const visionEnabled = (): boolean => providers().length > 0

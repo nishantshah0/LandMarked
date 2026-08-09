@@ -27,7 +27,12 @@ import type { Landmark } from '../shared/types'
 import { allLandmarks, setFunFact } from './db'
 import { askJSON, providers } from './llm'
 
-const CLAUDE_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
+// Cheapest Claude, five times under Opus. This run is 4,235 one-shot calls, so
+// the model choice is most of the bill. The honesty rule is enforced by the
+// schema and by validation here rather than by model strength, so a smaller
+// model degrades toward more 'category' questions, not toward invented facts.
+// Bump to claude-sonnet-5 via FUNFACT_MODEL if the questions read thin.
+const CLAUDE_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-haiku-4-5'
 const GEMINI_MODEL = (): string => process.env.GEMINI_FUNFACT_MODEL ?? 'gemini-2.5-flash'
 const OPENAI_MODEL = (): string => process.env.OPENAI_FUNFACT_MODEL ?? 'gpt-4o-mini'
 
