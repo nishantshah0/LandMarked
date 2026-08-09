@@ -502,6 +502,29 @@ body {
   font-weight: 600;
 }
 
+/* Shared by the lock (gate-flag) and the quiz ring — both inherit their
+   colour from whatever text they sit in via currentColor, so one rule
+   covers both contexts (accent inside .gate-flag, ink inside .funfact). */
+.inline-ico {
+  display: inline-flex;
+  vertical-align: -2px;
+  margin-right: 1px;
+}
+
+.ring-ico {
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.4px solid currentColor;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 10px;
+  line-height: 1;
+  vertical-align: -3px;
+}
+
 .ff-q {
   margin: 9px 0;
   line-height: 1.45;
