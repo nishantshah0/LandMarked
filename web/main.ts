@@ -709,6 +709,7 @@ $('camera').addEventListener('change', async (e) => {
       return
     }
 
+    fireShutter()
     const chips = (p?: [number, number, number][]): string =>
       p && p.length
         ? p.slice(0, 5).map((c) => `<i style="background:${hex(c)}"></i>`).join('')
@@ -747,6 +748,19 @@ $('camera').addEventListener('change', async (e) => {
 function showModal(html: string): void {
   $('modalBody').innerHTML = html
   $('modal').removeAttribute('hidden')
+}
+
+/** A camera-shutter iris, fired once on a successful claim — the product's
+ *  entire atomic action is "take a photo," so the moment it lands should
+ *  feel like one, not like a form submitting. Self-contained: builds its own
+ *  overlay, animates it, and removes itself — no persistent DOM, no state to
+ *  leak if a claim never succeeds in a session. */
+function fireShutter(): void {
+  const el = document.createElement('div')
+  el.className = 'shutter'
+  document.body.appendChild(el)
+  el.addEventListener('animationend', () => el.remove(), { once: true })
+  setTimeout(() => el.remove(), 900) // in case the animation is skipped or interrupted
 }
 
 /* ---------------- live ---------------- */
