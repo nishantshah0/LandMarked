@@ -10,6 +10,8 @@ export interface Landmark {
   category: string
   description: string | null
   photoCount: number
+  /** JSON {question, options, correctIndex} — batch-generated flavor, or null */
+  funFact: string | null
 }
 
 /** A photograph, kept forever. Claims rotate; the archive only grows. */

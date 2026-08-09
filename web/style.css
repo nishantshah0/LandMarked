@@ -379,6 +379,54 @@ body {
   min-height: 16px;
 }
 
+.funfact {
+  margin: 12px 0 2px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.funfact summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.ff-q {
+  margin: 9px 0;
+  line-height: 1.45;
+}
+
+.ff-opt {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 12.5px;
+  background: rgba(23, 24, 28, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 5px 0;
+  cursor: pointer;
+}
+
+.ff-opt.right {
+  border-color: var(--near);
+  background: rgba(63, 125, 73, 0.12);
+}
+
+.ff-opt.wrong {
+  border-color: var(--accent);
+  background: rgba(229, 83, 61, 0.1);
+}
+
+.ff-note {
+  font-size: 10.5px;
+  opacity: 0.55;
+  margin-top: 6px;
+}
+
 .archive-h {
   font-size: 11px;
   letter-spacing: 0.14em;

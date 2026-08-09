@@ -219,9 +219,11 @@ async function openSheet(id: string): Promise<void> {
       <button id="dirBtn" class="claim ghost2">Walk me there</button>
     </div>
     <div id="routeInfo" class="routeinfo"></div>
+    ${funFactHtml(l.funFact)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
   `
+  wireFunFact()
 
   const btn = document.getElementById('claimBtn') as HTMLButtonElement
   btn.onclick = () => {
@@ -231,6 +233,40 @@ async function openSheet(id: string): Promise<void> {
   const dir = document.getElementById('dirBtn')
   if (dir) dir.onclick = () => void showRoute(l.id)
   refreshDistance()
+}
+
+/* ---------------- fun fact (flavor, never a gate) ---------------- */
+
+function funFactHtml(raw: string | null): string {
+  if (!raw) return ''
+  try {
+    const f = JSON.parse(raw) as { question: string; options: string[]; correctIndex: number }
+    return (
+      `<details class="funfact" data-correct="${f.correctIndex}"><summary>💡 Fun fact quiz</summary>` +
+      `<p class="ff-q">${f.question}</p>` +
+      f.options.map((o, i) => `<button class="ff-opt" data-i="${i}">${o}</button>`).join('') +
+      `<p class="ff-note" hidden>AI-generated flavor, not verified history.</p></details>`
+    )
+  } catch {
+    return ''
+  }
+}
+
+function wireFunFact(): void {
+  const d = document.querySelector<HTMLElement>('.funfact')
+  if (!d) return
+  const correct = Number(d.dataset.correct)
+  d.querySelectorAll<HTMLButtonElement>('.ff-opt').forEach((b) => {
+    b.onclick = () => {
+      d.querySelectorAll<HTMLButtonElement>('.ff-opt').forEach((x, i) => {
+        x.disabled = true
+        if (i === correct) x.classList.add('right')
+        else if (x === b) x.classList.add('wrong')
+      })
+      const note = d.querySelector<HTMLElement>('.ff-note')
+      if (note) note.hidden = false
+    }
+  })
 }
 
 /* ---------------- walking route (§3.10) ---------------- */

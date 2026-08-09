@@ -104,6 +104,7 @@ async function main(): Promise<void> {
       category: categoryOf(el.tags ?? {}),
       description: el.tags?.description ?? el.tags?.inscription ?? null,
       photoCount: 0,
+      funFact: null,
     })
   }
 
@@ -135,6 +136,7 @@ async function main(): Promise<void> {
     category: 'venue',
     description: 'The hackathon itself. Claimable from inside the building.',
     photoCount: 0,
+    funFact: null,
   })
 
   insertLandmarks(near)

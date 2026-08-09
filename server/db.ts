@@ -33,6 +33,13 @@ db.exec(`
   );
 `)
 
+// Added after first ship; idempotent so existing databases upgrade in place.
+try {
+  db.exec('ALTER TABLE landmarks ADD COLUMN fun_fact TEXT')
+} catch {
+  // column already exists
+}
+
 function reopen(): void {
   try {
     db.close()
@@ -80,6 +87,7 @@ interface LRow {
   category: string
   description: string | null
   photo_count: number
+  fun_fact: string | null
 }
 
 export function allLandmarks(): Landmark[] {
@@ -93,7 +101,14 @@ export function allLandmarks(): Landmark[] {
     category: r.category,
     description: r.description,
     photoCount: Number(r.photo_count),
+    funFact: r.fun_fact ?? null,
   }))
+}
+
+export function setFunFact(id: string, json: string): void {
+  guard(() => {
+    db.prepare('UPDATE landmarks SET fun_fact = ? WHERE id = ?').run(json, id)
+  })
 }
 
 /* ---------------- photos: the permanent archive ---------------- */
