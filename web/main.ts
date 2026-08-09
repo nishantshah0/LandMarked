@@ -66,13 +66,16 @@ map.on('load', () => {
 map.on('error', (e) => console.warn('[map]', e.error?.message ?? e))
 
 function markerEl(l: LandmarkState): HTMLElement {
+  // Ownership is time-derived: a hold that lapsed since the last broadcast must
+  // render as free without waiting for a reload.
+  const owner = l.owner && l.owner.expiresAt > Date.now() ? l.owner : null
   const el = document.createElement('button')
-  el.className = 'pin' + (l.owner ? ' owned' : ' free') + (l.tier >= 2 ? ' major' : '')
+  el.className = 'pin' + (owner ? ' owned' : ' free') + (l.tier >= 2 ? ' major' : '')
   el.type = 'button'
-  const colour = l.owner ? l.owner.avatarColor : l.palette[0] ? hex(l.palette[0]) : null
+  const colour = owner ? owner.avatarColor : l.palette[0] ? hex(l.palette[0]) : null
   if (colour) el.style.setProperty('--pc', colour)
   el.innerHTML =
-    `<span class="pin-dot">${l.owner ? l.owner.handle.slice(0, 1).toUpperCase() : ''}</span>` +
+    `<span class="pin-dot">${owner ? owner.handle.slice(0, 1).toUpperCase() : ''}</span>` +
     (l.photoCount > 0 ? `<span class="pin-n">${l.photoCount}</span>` : '')
   el.title = l.name
   el.onclick = (e) => {
@@ -466,6 +469,8 @@ paintHandle()
 watchMe()
 connect()
 setInterval(refreshDistance, 4000)
+// Re-render pins each minute so 3-hour holds visibly lapse without a reload.
+setInterval(syncMarkers, 60_000)
 
 // One-time explainer — a stranger's first 10 seconds, then never again.
 if (!localStorage.getItem('seen_intro')) {
