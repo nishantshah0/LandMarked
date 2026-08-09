@@ -59,8 +59,6 @@ Landmarks are independent of that disk: `seed/landmarks.db` is committed and bak
 
 Deploying from a repo you don't own: Render's **"Public Git repository"** option takes the URL directly, needing no OAuth or collaborator rights. Blueprints need a connected provider, so set the service up in the UI instead — Docker runtime, health check `/healthz`, a 1 GB disk at `/app/data`, and the env vars listed in `render.yaml`.
 
-Deploying from a repo you don't own: Render's **"Public Git repository"** option takes the URL directly, needing no OAuth or collaborator rights. Blueprints need a connected provider, so set the service up in the UI instead — Docker runtime, health check `/healthz`, and the env vars listed in `render.yaml`.
-
 Keys live in `.env` (gitignored, kept out of the image by `.dockerignore`); see `.env.example` for what each one switches on. All are optional — `ANTHROPIC_API_KEY` enables vision verification and question generation, `GEMINI_API_KEY` is the fallback behind it. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
 
 ## Privacy

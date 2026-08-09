@@ -43,7 +43,7 @@ import {
   standings,
   stateOf,
 } from './state'
-import { verifyPhoto, visionEnabled } from './vision'
+import { verifyPhoto, visionEnabled, visionProvider } from './vision'
 
 // The venue's gate is load-bearing for the live demo, and a database seeded
 // before the gate existed has no question on it. Backfill it here rather than
@@ -66,7 +66,7 @@ const SPECIMEN = process.env.SEEN_SPECIMEN === '1'
 
 console.log(
   `[seen] ${landmarks.length} landmarks · ${photos.length} photographs · vision ${
-    visionEnabled() ? 'on' : 'off (deterministic checks only)'
+    visionEnabled() ? `on via ${visionProvider()}` : 'off (deterministic checks only)'
   }`,
 )
 
