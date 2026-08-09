@@ -62,8 +62,6 @@ export const CFG = {
   /** Tier at or above which the camera is gated behind the landmark's question.
    *  Tiers below this keep the question as after-the-fact flavour. */
   triviaGateMinTier: 3,
-  /** Photographs a place needs before its archive is worth reconstructing.
-   *  Structure-from-motion wants many angles; below this it will not solve. */
 } as const
 
 export type Tier = 1 | 2 | 3

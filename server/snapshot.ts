@@ -37,7 +37,7 @@ for (const t of ['photos', 'claims', 'attempts']) {
   }
 }
 // photo_count is a denormalised counter for the archive we just dropped.
-db.exec('UPDATE landmarks SET photo_count = 0, splat_url = NULL, splat_state = \'none\', splat_photos = 0')
+db.exec('UPDATE landmarks SET photo_count = 0')
 db.exec('VACUUM')
 
 const n = db.prepare('SELECT COUNT(*) AS n FROM landmarks').get() as unknown as { n: number }

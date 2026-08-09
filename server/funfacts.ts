@@ -29,10 +29,17 @@ import { askJSON, providers } from './llm'
 
 const CLAUDE_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
 const GEMINI_MODEL = (): string => process.env.GEMINI_FUNFACT_MODEL ?? 'gemini-2.5-flash'
+const OPENAI_MODEL = (): string => process.env.OPENAI_FUNFACT_MODEL ?? 'gpt-4o-mini'
 
 /** Gemini's free tier allows 20 requests/minute; 3.2s between calls sits just
- *  under it. Override with FUNFACT_PACE_MS on a paid key. */
-const PACE_MS = Number(process.env.FUNFACT_PACE_MS ?? 3200)
+ *  under it. A paid OpenAI key has no such ceiling, so when that is the only
+ *  provider the pace drops and the run goes wide instead. */
+const OPENAI_ONLY = (): boolean => providers().length === 1 && providers()[0] === 'openai'
+const PACE_MS = Number(process.env.FUNFACT_PACE_MS ?? (OPENAI_ONLY() ? 0 : 3200))
+/** How many landmarks are in flight at once. One is right for a free tier that
+ *  counts requests per minute; a paid key can afford real concurrency, and with
+ *  four thousand landmarks serial generation simply never finishes. */
+const CONCURRENCY = Number(process.env.FUNFACT_CONCURRENCY ?? (OPENAI_ONLY() ? 8 : 1))
 
 interface FunFact {
   question: string
@@ -150,6 +157,7 @@ async function generate(l: Landmark, grounding: string): Promise<Outcome> {
     maxTokens: 1000,
     claudeModel: CLAUDE_MODEL(),
     geminiModel: GEMINI_MODEL(),
+    openaiModel: OPENAI_MODEL(),
     timeoutMs: 30_000,
   })
   if (!out) return { kind: 'unavailable' }
@@ -170,7 +178,7 @@ async function main(): Promise<void> {
   const have = providers()
   if (have.length === 0) {
     console.log(
-      '[funfacts] no ANTHROPIC_API_KEY or GEMINI_API_KEY — skipping (the app works fine without them)',
+      '[funfacts] no ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY — skipping (the app works fine without them)',
     )
     process.exit(0)
   }
@@ -195,34 +203,53 @@ async function main(): Promise<void> {
     .slice(0, Number.isFinite(limit) ? limit : undefined)
 
   const gated = todo.filter((l) => l.tier >= CFG.triviaGateMinTier).length
-  const chain = have.map((p) => (p === 'claude' ? CLAUDE_MODEL() : GEMINI_MODEL())).join(' → ')
-  console.log(`[funfacts] ${todo.length} landmarks to try (${gated} gated) · ${chain}`)
+  const modelOf = (p: string): string =>
+    p === 'claude' ? CLAUDE_MODEL() : p === 'gemini' ? GEMINI_MODEL() : OPENAI_MODEL()
+  const chain = have.map(modelOf).join(' → ')
+  console.log(
+    `[funfacts] ${todo.length} landmarks to try (${gated} gated) · ${chain}` +
+      ` · ${CONCURRENCY} at a time`,
+  )
 
   let place = 0
   let category = 0
   let skipped = 0
   let unavailable = 0
-  for (const l of todo) {
-    const grounding = await groundingFor(l)
-    const out = await generate(l, grounding)
-    if (out.kind === 'written') {
-      setFunFact(l.id, JSON.stringify(out.fact))
-      if (out.fact.scope === 'place') place++
-      else category++
-      const mark = out.fact.scope === 'place' ? '✓' : '~'
-      console.log(`  ${mark} ${l.name} — ${out.fact.question}`)
-    } else if (out.kind === 'skipped') {
-      skipped++
-      console.log(`  · ${l.name} — nothing specific enough, left without a question`)
-    } else {
-      unavailable++
-      console.log(`  ! ${l.name} — no provider answered, not attempted`)
+  let done = 0
+
+  // A bounded pool: CONCURRENCY workers pulling from one shared cursor. Keeps
+  // the request rate steady instead of firing four thousand at once, and lets a
+  // paid key finish in minutes what a serial loop would take hours to do.
+  let cursor = 0
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = cursor++
+      if (i >= todo.length) return
+      const l = todo[i]
+      const grounding = await groundingFor(l)
+      const out = await generate(l, grounding)
+      if (out.kind === 'written') {
+        setFunFact(l.id, JSON.stringify(out.fact))
+        if (out.fact.scope === 'place') place++
+        else category++
+      } else if (out.kind === 'skipped') {
+        skipped++
+      } else {
+        unavailable++
+      }
+      done++
+      // One line per 25 rather than per landmark: four thousand lines of log is
+      // not progress, it is noise.
+      if (done % 25 === 0 || done === todo.length) {
+        console.log(
+          `  … ${done}/${todo.length} — ${place} about the place, ${category} about its kind` +
+            (unavailable ? `, ${unavailable} unanswered` : ''),
+        )
+      }
+      if (PACE_MS > 0) await new Promise((r) => setTimeout(r, PACE_MS))
     }
-    // Free tier is 20 requests/minute. Pace under it deliberately — the retry
-    // in llm.ts is a safety net, not a strategy, and a run that trips the limit
-    // on every call takes far longer than one that never trips it.
-    await new Promise((r) => setTimeout(r, PACE_MS))
   }
+  await Promise.all(Array.from({ length: Math.max(1, CONCURRENCY) }, () => worker()))
 
   console.log(
     `[funfacts] ${place + category} written — ${place} about the place itself, ${category} about its kind` +

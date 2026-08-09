@@ -503,7 +503,6 @@ const server = createServer((req, res) => {
   let path = url
   if (path === '/') path = '/index.html'
   if (path === '/dashboard') path = '/dashboard.html'
-  if (path === '/splat') path = '/splat.html'
   const file = normPath(join(DIST, path))
   if (!file.startsWith(normPath(DIST)) || !existsSync(file) || !statSync(file).isFile()) {
     res.writeHead(404)
