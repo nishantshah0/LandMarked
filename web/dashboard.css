@@ -718,3 +718,42 @@ body.dash {
   border-radius: 2px;
   margin-right: 5px;
 }
+
+/* ---------------- the join card ---------------- */
+
+.joincard {
+  display: flex;
+  gap: 22px;
+  align-items: center;
+}
+
+.qr {
+  flex: none;
+  width: 128px;
+  height: 128px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.joinurl {
+  font-family: var(--sans);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  opacity: 0.75;
+  word-break: break-all;
+}
+
+@media (max-width: 640px) {
+  .joincard {
+    flex-direction: column;
+    text-align: center;
+  }
+}

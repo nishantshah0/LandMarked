@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "maplibre-gl": "^5.0.0",
+    "qrcode-generator": "^2.0.4",
     "ws": "^8.18.0"
   },
   "devDependencies": {

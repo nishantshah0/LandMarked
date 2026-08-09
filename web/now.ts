@@ -1,10 +1,24 @@
 // The pulse page: presence, momentum, where to start. Live over the same
 // socket as everything else; every figure here is real or absent.
 
+import qrcode from 'qrcode-generator'
 import { hex } from '../shared/palette'
 import type { DashStats, FeedEntry, ServerMsg } from '../shared/types'
 
 const $ = (id: string): HTMLElement => document.getElementById(id)!
+
+// The join card: whoever is looking at this page can put the whole room on the
+// site in seconds. Encodes wherever the page is actually served from, so it
+// survives every change of hosting without an edit.
+function drawJoin(): void {
+  const url = location.origin
+  const qr = qrcode(0, 'M')
+  qr.addData(url)
+  qr.make()
+  $('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true })
+  $('joinUrl').textContent = url.replace(/^https?:\/\//, '')
+}
+drawJoin()
 
 function setLive(on: boolean): void {
   $('live').classList.toggle('on', on)
