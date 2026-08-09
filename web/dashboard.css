@@ -1,3 +1,4 @@
+/* Releases the map page's scroll lock (see the note on body in style.css). */
 body.dash {
   overflow: auto;
   height: auto;

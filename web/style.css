@@ -22,7 +22,6 @@
 html,
 body {
   height: 100%;
-  overflow: hidden;
 }
 
 body {
@@ -31,6 +30,14 @@ body {
   background: var(--paper);
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+  /* The map page must not scroll — but the lock lives on body alone, never on
+     html. With both set to overflow:hidden, the data pages (which release only
+     body) ended up with html still clipping; releasing html too then gave html
+     and body a scroller each, which stops the viewport scrolling altogether.
+     The symptom either way: the wheel and trackpad did nothing on the data
+     pages while scrollTo still worked, so it survived screenshot review.
+     #map is position:fixed, so body alone is enough here. */
+  overflow: hidden;
 }
 
 #map {
