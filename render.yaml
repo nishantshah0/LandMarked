@@ -26,6 +26,10 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      # Third in the chain, tried only if Claude and Gemini are both missing or
+      # failing. Set whichever key you actually have — one is enough.
+      - key: OPENAI_API_KEY
+        sync: false
       # Only set these if your key lacks the default model.
       - key: GEMINI_VISION_MODEL
         value: gemini-2.5-flash

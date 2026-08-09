@@ -10,13 +10,15 @@
 
 const KEY_CLAUDE = (): string => process.env.ANTHROPIC_API_KEY ?? ''
 const KEY_GEMINI = (): string => process.env.GEMINI_API_KEY ?? ''
+const KEY_OPENAI = (): string => process.env.OPENAI_API_KEY ?? ''
 
-export type Provider = 'claude' | 'gemini'
+export type Provider = 'claude' | 'gemini' | 'openai'
 
 export function providers(): Provider[] {
   const out: Provider[] = []
   if (KEY_CLAUDE()) out.push('claude')
   if (KEY_GEMINI()) out.push('gemini')
+  if (KEY_OPENAI()) out.push('openai')
   return out
 }
 
@@ -32,6 +34,8 @@ export interface JsonAsk {
   claudeModel: string
   /** Gemini model override, per call site */
   geminiModel: string
+  /** OpenAI model override, per call site */
+  openaiModel?: string
   timeoutMs?: number
 }
 
@@ -187,10 +191,60 @@ async function viaGemini(ask: JsonAsk): Promise<string> {
  * Ask for a JSON object. Returns the first provider that answers with something
  * parseable, or null if none does — never throws.
  */
+
+/** OpenAI, third in the chain. json_schema response_format is the same contract
+ *  Claude's output_config gives us, so the caller's schema is reused verbatim —
+ *  except OpenAI requires `strict` schemas to name every property as required,
+ *  which ours already do. */
+async function viaOpenAI(ask: JsonAsk): Promise<string> {
+  const content: unknown[] = [{ type: 'text', text: ask.text }]
+  if (ask.imageB64) {
+    content.push({
+      type: 'image_url',
+      image_url: { url: `data:image/jpeg;base64,${ask.imageB64}` },
+    })
+  }
+
+  return withTimeout(ask.timeoutMs ?? 20_000, async (signal) => {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${KEY_OPENAI()}`,
+        'content-type': 'application/json',
+      },
+      signal,
+      body: JSON.stringify({
+        model: ask.openaiModel ?? process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+        max_tokens: ask.maxTokens,
+        messages: [
+          { role: 'system', content: ask.system },
+          { role: 'user', content },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'answer', strict: true, schema: ask.schema },
+        },
+      }),
+    })
+    if (res.status === 429) {
+      const wait = Number(res.headers.get('retry-after') ?? 5)
+      throw new RateLimited(Number.isFinite(wait) ? wait : 5)
+    }
+    if (!res.ok) throw new Error(`openai ${res.status}`)
+    const body = (await res.json()) as {
+      choices?: { message?: { content?: string; refusal?: string | null } }[]
+    }
+    const msg = body.choices?.[0]?.message
+    if (msg?.refusal) throw new Error('openai refused')
+    return msg?.content ?? ''
+  })
+}
+
 export async function askJSON<T>(ask: JsonAsk): Promise<{ data: T | null; provider: Provider | null }> {
   const attempts: [Provider, () => Promise<string>][] = []
   if (KEY_CLAUDE()) attempts.push(['claude', () => viaClaude(ask)])
   if (KEY_GEMINI()) attempts.push(['gemini', () => viaGemini(ask)])
+  if (KEY_OPENAI()) attempts.push(['openai', () => viaOpenAI(ask)])
 
   for (const [provider, run] of attempts) {
     // Two attempts per provider, because a rate limit is a "wait", not a "no".

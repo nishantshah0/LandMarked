@@ -6,7 +6,7 @@
 // checks alone and the attempt is logged as unverified. A demo must never hinge
 // on someone else's uptime.
 //
-// Claude does the judging; Gemini stands behind it (see server/llm.ts).
+// Claude judges first; Gemini, then OpenAI stand behind it (see server/llm.ts).
 
 import { askJSON, providers } from './llm'
 
@@ -15,14 +15,18 @@ const GEMINI_MODEL = (): string => process.env.GEMINI_VISION_MODEL ?? 'gemini-2.
 
 export const visionEnabled = (): boolean => providers().length > 0
 
+const OPENAI_MODEL = (): string => process.env.OPENAI_VISION_MODEL ?? 'gpt-4o-mini'
+
 /** Which provider will actually judge a claim, printed at boot — so the pitch
  *  can never drift from what is really running. (Idea carried over from the
  *  brand branch, where it guarded the same risk against a different provider
- *  pair.) */
+ *  pair — which is exactly the drift that happened here when the chain gained
+ *  a third link.) */
 export const visionProvider = (): string => {
   const have = providers()
   if (have.length === 0) return 'none'
-  return have.map((p) => (p === 'claude' ? CLAUDE_MODEL() : GEMINI_MODEL())).join(' → ')
+  const model = { claude: CLAUDE_MODEL, gemini: GEMINI_MODEL, openai: OPENAI_MODEL }
+  return have.map((p) => model[p]()).join(' → ')
 }
 
 export interface Verdict {
@@ -81,6 +85,7 @@ export async function verifyPhoto(
     maxTokens: 300,
     claudeModel: CLAUDE_MODEL(),
     geminiModel: GEMINI_MODEL(),
+    openaiModel: OPENAI_MODEL(),
     timeoutMs: 12_000,
   })
 

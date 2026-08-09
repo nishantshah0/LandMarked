@@ -17,6 +17,7 @@ import type {
   Photo,
   Standings,
 } from '../shared/types'
+import { corpusStats } from './corpus'
 import { allAttempts, allClaims, allLandmarks, allPhotos } from './db'
 
 export const landmarks: Landmark[] = allLandmarks()
@@ -279,6 +280,7 @@ export function dashStats(now: number, paintingKey: string | null): DashStats {
   for (const c of claims) contest.set(c.landmarkId, (contest.get(c.landmarkId) ?? 0) + 1)
 
   return {
+    corpus: corpusStats(landmarks),
     totalClaims: claims.length,
     activeClaims: landmarks.filter((l) => currentOwner(l.id, now)).length,
     players: new Set(claims.map((c) => c.handle)).size,
