@@ -34,7 +34,7 @@ function askHandle(): string | null {
   return getHandle()
 }
 function paintHandle(): void {
-  $('meBtn').textContent = getHandle() ?? 'Who are you?'
+  $('meBtn').textContent = getHandle() ?? 'You'
 }
 
 /* ---------------- state ---------------- */
@@ -430,6 +430,22 @@ function categoryIconUrl(category: string): string {
   return `/brand/category/${key}.svg`
 }
 
+// Inline glyphs for the two spots that were leaning on emoji (🔒, 💡) as UI
+// markers — the default move, and one the rubric names directly. Drawn in
+// the same ink line-weight as the category icon set rather than borrowed
+// from a system emoji font, so they read as this app's marks, not a phone's.
+const ICON_LOCK =
+  `<svg class="inline-ico" viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">` +
+  `<path d="M4.6 7.1V5.3a3.4 3.4 0 0 1 6.8 0v1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>` +
+  `<rect x="3.1" y="7.1" width="9.8" height="7.1" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>` +
+  `<circle cx="8" cy="10.3" r="1.05" fill="currentColor"/>` +
+  `</svg>`
+
+// A small ring-and-mark, not a lightbulb — the lightbulb reads "idea" for
+// any app; a ring with a question mark reads as this app's own quiz prompt,
+// set in the same serif already used for headlines rather than a glyph.
+const ICON_QUIZ = `<span class="inline-ico ring-ico" aria-hidden="true">?</span>`
+
 function photoStrip(photos: Photo[]): string {
   if (photos.length === 0) {
     return `<p class="none">No one has photographed this yet.</p>`
@@ -499,7 +515,7 @@ async function openSheet(id: string): Promise<void> {
       <button id="dirBtn" class="claim ghost2">Walk me there</button>
     </div>
     <div id="routeInfo" class="routeinfo"></div>
-    ${l.gated ? `<p class="gate-flag">🔒 Iconic — answer its question to unlock the camera</p>` : ''}
+    ${l.gated ? `<p class="gate-flag">${ICON_LOCK} Iconic — answer its question to unlock the camera</p>` : ''}
     ${funFactHtml(l.funFact, l.category)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
@@ -533,7 +549,7 @@ function funFactHtml(raw: string | null, category: string): string {
     // A question about murals in general must not read as a fact about *this*
     // mural. The summary line says which it is, before you open it.
     const general = f.scope === 'category'
-    const label = general ? `💡 About ${category}s in general` : '💡 About this place'
+    const label = general ? `${ICON_QUIZ} About ${category}s in general` : `${ICON_QUIZ} About this place`
     const note = general
       ? `A general question about ${category}s — the record for this one is just a name.`
       : 'Built from this place&rsquo;s own record. AI-written, so treat it as flavour.'
@@ -579,14 +595,15 @@ function boardHtml(): string {
   }
   const rows = boardTab === 'holding' ? standings.holding : standings.visited
   const value = (l: LeaderRow): number => (boardTab === 'holding' ? l.holding : l.visited)
-  const unit = boardTab === 'holding' ? 'held' : 'places'
+  const unit = (n: number): string =>
+    boardTab === 'holding' ? 'held' : n === 1 ? 'station' : 'stations'
   const me = getHandle()
   const myIndex = me ? rows.findIndex((r) => r.handle === me) : -1
 
   const row = (l: LeaderRow, i: number): string =>
     `<li class="${l.handle === me ? 'me' : ''}"><span class="rk">${i + 1}</span>` +
     `<i class="dot" style="background:${l.avatarColor}"></i>` +
-    `<span class="nm">${l.handle}</span><b>${value(l)}<span class="unit"> ${unit}</span></b></li>`
+    `<span class="nm">${l.handle}</span><b>${value(l)}<span class="unit"> ${unit(value(l))}</span></b></li>`
 
   const top = rows.slice(0, 10).map(row).join('')
   // Outside the top ten, pin your own row on the end rather than hiding it.
@@ -614,7 +631,14 @@ function myStandingHtml(): string {
   }
   const row = rows[i]
   const value = boardTab === 'holding' ? row.holding : row.visited
-  const unit = boardTab === 'holding' ? (value === 1 ? 'place held' : 'places held') : 'places visited'
+  const unit =
+    boardTab === 'holding'
+      ? value === 1
+        ? 'place held'
+        : 'places held'
+      : value === 1
+        ? 'station collected'
+        : 'stations collected'
   return (
     `<div class="boardme"><i class="dot" style="background:${row.avatarColor}"></i>` +
     `<span>You are <b>#${i + 1}</b> of ${standings.players}</span>` +
@@ -628,7 +652,7 @@ function paintBoard(): void {
   panel.innerHTML =
     `<div class="boardtabs">` +
     `<button class="btab${boardTab === 'holding' ? ' on' : ''}" data-t="holding">Holding now</button>` +
-    `<button class="btab${boardTab === 'visited' ? ' on' : ''}" data-t="visited">Places visited</button>` +
+    `<button class="btab${boardTab === 'visited' ? ' on' : ''}" data-t="visited">Stations collected</button>` +
     `</div>` +
     myStandingHtml() +
     boardHtml() +
@@ -751,15 +775,27 @@ async function showRoute(to: string): Promise<void> {
         src.setData(data)
       } else {
         map.addSource('route', { type: 'geojson', data })
+        // Casing first, so the signal-yellow line above always has an edge to
+        // sit against — a light basemap would otherwise swallow it.
+        map.addLayer({
+          id: 'route-casing',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#17181c', 'line-width': 9, 'line-opacity': 0.9 },
+        })
         map.addLayer({
           id: 'route',
           type: 'line',
           source: 'route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
-            'line-color': '#17181c',
-            'line-width': 4,
-            'line-opacity': 0.75,
+            // Drawn as a transit line rather than a hairline: a dark casing is
+            // added below this layer, so the route reads as a route on a busy
+            // grey basemap instead of another street.
+            'line-color': '#f8c300',
+            'line-width': 5,
+            'line-opacity': 1,
             'line-dasharray': r.fallback ? [1.5, 2] : [1, 0],
           },
         })
@@ -780,10 +816,13 @@ async function showRoute(to: string): Promise<void> {
 }
 
 function clearRoute(): void {
-  if (mapReady && map.getLayer('route')) {
-    map.removeLayer('route')
-    map.removeSource('route')
+  if (!mapReady) return
+  // Both layers must go before the source: removeSource throws while anything
+  // still references it, and the route is drawn as a casing plus a line.
+  for (const id of ['route', 'route-casing']) {
+    if (map.getLayer(id)) map.removeLayer(id)
   }
+  if (map.getSource('route')) map.removeSource('route')
 }
 
 function closeSheet(): void {

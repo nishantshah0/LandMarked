@@ -396,7 +396,7 @@ function render(stats: DashStats, standings: Standings): void {
       .join('') || '<li class="none">No one yet.</li>'
 
   $('boardHolding').innerHTML = board(standings.holding, (l) => l.holding, 'held')
-  $('boardVisited').innerHTML = board(standings.visited, (l) => l.visited, 'places')
+  $('boardVisited').innerHTML = board(standings.visited, (l) => l.visited, 'stations')
 
   $('contested').innerHTML =
     stats.mostContested.map((c) => `<li>${c.name}<b>${c.n}</b></li>`).join('') ||
