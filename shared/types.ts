@@ -18,7 +18,10 @@ export interface Landmark {
   photoCount: number
   /** JSON {question, options, correctIndex} — batch-generated, or null */
   funFact: string | null
-  /** Where the finished splat lives: /splats/x.ply, or an external URL */
+  /** Where this place's 3D reconstruction lives. Two shapes, deliberately:
+   *  a local `/splats/x.ply` we serve and render in our own viewer, or an
+   *  `https://` embed URL (a Luma capture) shown inline in an iframe. The
+   *  renderer branches on the scheme — see splatHtml() in web/main.ts. */
   splatUrl: string | null
   splatState: SplatState
   /** how many photographs the current model was reconstructed from */

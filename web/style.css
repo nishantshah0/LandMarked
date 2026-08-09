@@ -428,6 +428,17 @@ body {
   min-height: 16px;
 }
 
+/* An embedded hosted capture. Distinct from `.splat`, the card further down
+   that fronts a model we serve ourselves — the two used to share a name and
+   silently restyled each other. */
+.splat-frame {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: none;
+  border-radius: 12px;
+  background: #17181c;
+}
+
 .funfact {
   margin: 12px 0 2px;
   border: 1px solid var(--line);

@@ -81,6 +81,15 @@ export async function registerSplat(
 ): Promise<{ ok: boolean; url: string | null; message: string }> {
   const isRemote = /^https?:\/\//i.test(urlOrPath)
   if (isRemote) {
+    // A remote URL is one of two things. If it points at an actual model file we
+    // pull it onto our own disk and render it ourselves. If it doesn't — a Luma
+    // share link, say — it is somebody's hosted viewer page, so downloading it
+    // would fetch HTML; store it as an embed URL and let the sheet iframe it.
+    const isModelFile = SPLAT_EXTS.some((e) => urlOrPath.split('?')[0].toLowerCase().endsWith(e))
+    if (!isModelFile) {
+      setSplat(landmarkId, 'ready', urlOrPath, photoCount)
+      return { ok: true, url: urlOrPath, message: `Embedded as a hosted capture: ${urlOrPath}` }
+    }
     const local = await selfHost(landmarkId, urlOrPath)
     const url = local ?? urlOrPath
     setSplat(landmarkId, 'ready', url, photoCount)

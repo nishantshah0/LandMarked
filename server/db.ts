@@ -173,6 +173,19 @@ export function setSplat(
   })
 }
 
+/** Attach an already-hosted model (a Luma embed URL) — the phone-capture path.
+ *
+ *  This must move splat_state to 'ready' as well as writing the URL: the sheet
+ *  renders on state, not on the URL being non-null, so setting one without the
+ *  other stores a model that never appears. */
+export function setSplatUrl(id: string, url: string): void {
+  guard(() => {
+    db.prepare(
+      "UPDATE landmarks SET splat_url = ?, splat_state = 'ready', splat_updated_at = ? WHERE id = ?",
+    ).run(url, Date.now(), id)
+  })
+}
+
 /* ---------------- photos: the permanent archive ---------------- */
 
 interface PRow {

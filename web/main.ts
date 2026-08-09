@@ -363,6 +363,16 @@ function openGate(l: LandmarkState, onPass: () => void): void {
 
 function splatHtml(l: LandmarkState): string {
   if (l.splatState === 'ready' && l.splatUrl) {
+    // Two capture paths land in the same field, so render on its shape. A
+    // remote URL is somebody's hosted capture (Luma) and embeds inline; a
+    // local path is a model we hold and serve, opened in our own viewer.
+    const hosted = /^https?:\/\//i.test(l.splatUrl)
+    if (hosted) {
+      return (
+        `<h3 class="archive-h">Walk around it — 3D, built from photographs</h3>` +
+        `<iframe class="splat-frame" src="${l.splatUrl}" loading="lazy" allow="fullscreen" title="3D model of ${l.name}"></iframe>`
+      )
+    }
     return (
       `<div class="splat ready">` +
       `<b>This place exists in 3D.</b>` +

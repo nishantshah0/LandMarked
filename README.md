@@ -31,7 +31,16 @@ Questions are **grounded, never invented**. The seed keeps a whitelist of OSM ta
 
 ## The place in 3D
 
-Every accepted photo is a photograph of one place from one angle, which is exactly the input a photogrammetry pipeline wants. Once a place crosses eight photographs the app offers to rebuild it as a **3D Gaussian Splat**, rendered in-browser at `/splat.html?id=<landmarkId>` by [Spark](https://sparkjs.dev) — the model is served from our own `data/splats/`, so the viewer depends on no CDN, iframe or third-party player.
+Two capture paths land in the same `splatUrl` field, and the sheet renders on its shape.
+
+**Fast path — one person, ~60 seconds.** Walk a slow circle around the subject in the Luma AI phone app, copy the share URL, and attach it. The sheet embeds it inline:
+
+```bash
+npx tsx server/set-splat.ts --list
+npx tsx server/set-splat.ts venue "https://lumalabs.ai/embed/…"
+```
+
+**Archive path — the model comes out of the game itself.** Every accepted photo is a photograph of one place from one angle, which is exactly the input a photogrammetry pipeline wants. Once a place crosses eight photographs the app offers to rebuild it as a **3D Gaussian Splat**, rendered in-browser at `/splat.html?id=<landmarkId>` by [Spark](https://sparkjs.dev) — the model is served from our own `data/splats/`, so the viewer depends on no CDN, iframe or third-party player.
 
 **On generation, honestly:** the plan named Luma's Capture API, which was discontinued and its client archived in September 2024 — there is no key that makes it work. So generation is a pluggable step between the two halves that do work:
 
