@@ -1,3 +1,4 @@
+import type { FeatureCollection, Point } from 'geojson'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { CFG, TIER_LABEL, VENUE } from '../shared/config'
@@ -6,6 +7,7 @@ import { hex } from '../shared/palette'
 import type {
   ArchiveResponse,
   ClaimResponse,
+  LandmarkPin,
   LandmarkState,
   Photo,
   ServerMsg,
@@ -36,10 +38,19 @@ function paintHandle(): void {
 
 /* ---------------- state ---------------- */
 
-let landmarks: LandmarkState[] = []
+let landmarks: LandmarkPin[] = []
+const byId = new Map<string, LandmarkPin>()
 const markers = new Map<string, maplibregl.Marker>()
 let here: { lat: number; lng: number; accuracy: number } | null = null
 let openId: string | null = null
+
+/** Below this zoom the city is drawn as clustered counts; at or above it, as
+ *  individual pins. A DOM marker per landmark is the right call for a few
+ *  hundred and completely wrong for four thousand — the browser cannot lay out
+ *  that many absolutely-positioned nodes on every map move. */
+const PIN_ZOOM = 14
+/** Hard ceiling on live DOM markers, whatever the viewport contains. */
+const MAX_PINS = 500
 
 /* ---------------- map ---------------- */
 
@@ -68,18 +79,21 @@ let meMarker: maplibregl.Marker | null = null
 let mapReady = false
 map.on('load', () => {
   mapReady = true
+  installClusterLayers()
   syncMarkers()
 })
 map.on('error', (e) => console.warn('[map]', e.error?.message ?? e))
+map.on('moveend', syncMarkers)
+map.on('zoomend', syncMarkers)
 
-function markerEl(l: LandmarkState): HTMLElement {
+function markerEl(l: LandmarkPin): HTMLElement {
   // Ownership is time-derived: a hold that lapsed since the last broadcast must
   // render as free without waiting for a reload.
   const owner = l.owner && l.owner.expiresAt > Date.now() ? l.owner : null
   const el = document.createElement('button')
   el.className = 'pin' + (owner ? ' owned' : ' free') + (l.tier >= 2 ? ' major' : '')
   el.type = 'button'
-  const colour = owner ? owner.avatarColor : l.palette[0] ? hex(l.palette[0]) : null
+  const colour = owner ? owner.avatarColor : l.tint ? hex(l.tint) : null
   if (colour) el.style.setProperty('--pc', colour)
   el.innerHTML =
     `<span class="pin-dot">${owner ? owner.handle.slice(0, 1).toUpperCase() : ''}</span>` +
@@ -92,16 +106,148 @@ function markerEl(l: LandmarkState): HTMLElement {
   return el
 }
 
+/* ---------------- rendering a whole city ---------------- */
+
+function pinsGeoJSON(): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: landmarks.map((l) => ({
+      type: 'Feature',
+      properties: { id: l.id, held: l.owner && l.owner.expiresAt > Date.now() ? 1 : 0 },
+      geometry: { type: 'Point', coordinates: [l.lng, l.lat] },
+    })),
+  }
+}
+
+/** Clustered counts, drawn by the GPU, for every zoom below PIN_ZOOM. Tapping a
+ *  cluster zooms into it, which is how you get from "the GTA" to a street. */
+function installClusterLayers(): void {
+  map.addSource('pins', {
+    type: 'geojson',
+    data: pinsGeoJSON(),
+    cluster: true,
+    clusterRadius: 55,
+    clusterMaxZoom: PIN_ZOOM - 1,
+  })
+
+  map.addLayer({
+    id: 'clusters',
+    type: 'circle',
+    source: 'pins',
+    filter: ['has', 'point_count'],
+    maxzoom: PIN_ZOOM,
+    paint: {
+      'circle-color': '#17181c',
+      'circle-opacity': 0.86,
+      'circle-stroke-width': 2.5,
+      'circle-stroke-color': '#f7f5ef',
+      // Area should read as quantity, so step the radius with the count.
+      'circle-radius': ['step', ['get', 'point_count'], 15, 10, 20, 50, 26, 200, 33],
+    },
+  })
+
+  map.addLayer({
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'pins',
+    filter: ['has', 'point_count'],
+    maxzoom: PIN_ZOOM,
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-font': ['Noto Sans Bold'],
+      'text-size': 12,
+    },
+    paint: { 'text-color': '#f7f5ef' },
+  })
+
+  // Single places below PIN_ZOOM still deserve a dot, or a lone landmark in the
+  // suburbs would simply vanish between zoom levels.
+  map.addLayer({
+    id: 'loners',
+    type: 'circle',
+    source: 'pins',
+    filter: ['!', ['has', 'point_count']],
+    maxzoom: PIN_ZOOM,
+    paint: {
+      'circle-radius': 5,
+      'circle-color': ['case', ['==', ['get', 'held'], 1], '#e5533d', '#17181c'],
+      'circle-opacity': 0.8,
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': '#f7f5ef',
+    },
+  })
+
+  map.on('click', 'clusters', (e) => {
+    const f = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0]
+    const src = map.getSource('pins') as maplibregl.GeoJSONSource
+    void src.getClusterExpansionZoom(f.properties.cluster_id as number).then((z) => {
+      map.easeTo({ center: (f.geometry as Point).coordinates as [number, number], zoom: z })
+    })
+  })
+  map.on('click', 'loners', (e) => {
+    const id = map.queryRenderedFeatures(e.point, { layers: ['loners'] })[0]?.properties.id
+    if (typeof id === 'string') void openSheet(id)
+  })
+  for (const layer of ['clusters', 'loners']) {
+    map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'))
+    map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''))
+  }
+}
+
+function refreshClusterSource(): void {
+  if (!mapReady) return
+  const src = map.getSource('pins') as maplibregl.GeoJSONSource | undefined
+  if (src) src.setData(pinsGeoJSON())
+}
+
+/** Keep a DOM marker for every landmark on screen, and none for any that isn't.
+ *  Diffed rather than rebuilt, so panning costs only what actually changed. */
 function syncMarkers(): void {
   if (!mapReady) return
-  for (const l of landmarks) {
-    const existing = markers.get(l.id)
-    if (existing) existing.remove()
-    const m = new maplibregl.Marker({ element: markerEl(l) })
-      .setLngLat([l.lng, l.lat])
-      .addTo(map)
-    markers.set(l.id, m)
+
+  if (map.getZoom() < PIN_ZOOM) {
+    for (const m of markers.values()) m.remove()
+    markers.clear()
+    return
   }
+
+  const b = map.getBounds()
+  const wanted = new Set<string>()
+  for (const l of landmarks) {
+    if (l.lng < b.getWest() || l.lng > b.getEast()) continue
+    if (l.lat < b.getSouth() || l.lat > b.getNorth()) continue
+    wanted.add(l.id)
+    if (wanted.size >= MAX_PINS) break
+  }
+
+  for (const [id, m] of markers) {
+    if (!wanted.has(id)) {
+      m.remove()
+      markers.delete(id)
+    }
+  }
+  for (const id of wanted) {
+    if (markers.has(id)) continue
+    const l = byId.get(id)
+    if (!l) continue
+    markers.set(
+      id,
+      new maplibregl.Marker({ element: markerEl(l) }).setLngLat([l.lng, l.lat]).addTo(map),
+    )
+  }
+}
+
+/** Re-render the pins already on screen — used when a hold lapses with time. */
+function repaintVisible(): void {
+  for (const m of markers.values()) m.remove()
+  markers.clear()
+  syncMarkers()
+}
+
+function setLandmarks(list: LandmarkPin[]): void {
+  landmarks = list
+  byId.clear()
+  for (const l of list) byId.set(l.id, l)
 }
 
 /* ---------------- geolocation ---------------- */
@@ -594,15 +740,19 @@ function connect(): void {
       return
     }
     if (m.t === 'init') {
-      landmarks = m.landmarks
+      setLandmarks(m.landmarks)
+      refreshClusterSource()
       syncMarkers()
       paintColourbar(m.stats.city.palette)
     } else if (m.t === 'claimed') {
       const i = landmarks.findIndex((l) => l.id === m.landmark.id)
       if (i >= 0) landmarks[i] = m.landmark
-      if (mapReady) {
-        const old = markers.get(m.landmark.id)
-        if (old) old.remove()
+      byId.set(m.landmark.id, m.landmark)
+      refreshClusterSource()
+      // Only redraw the marker if that place is actually on screen; a claim
+      // across the city must not add a node to this viewport.
+      if (mapReady && markers.has(m.landmark.id)) {
+        markers.get(m.landmark.id)!.remove()
         markers.set(
           m.landmark.id,
           new maplibregl.Marker({ element: markerEl(m.landmark) })
@@ -614,11 +764,10 @@ function connect(): void {
       paintColourbar(m.stats.city.palette)
     } else if (m.t === 'splat') {
       const l = landmarks.find((x) => x.id === m.landmarkId)
-      if (l) {
-        l.splatState = m.state
-        l.splatUrl = m.splatUrl
-      }
-      // If you are looking at the place that just finished, show it at once.
+      // The pin carries no splat fields — sheets read them from
+      // /api/landmark/:id — so a finished model only needs the open sheet
+      // reopened to show it.
+      void l
       if (openId === m.landmarkId && m.state !== 'pending') void openSheet(m.landmarkId)
     }
   }
@@ -634,8 +783,10 @@ paintHandle()
 watchMe()
 connect()
 setInterval(refreshDistance, 4000)
-// Re-render pins each minute so 3-hour holds visibly lapse without a reload.
-setInterval(syncMarkers, 60_000)
+// Re-render the pins on screen each minute so 3-hour holds visibly lapse
+// without a reload. Only the visible ones — syncMarkers alone would leave an
+// already-mounted marker untouched, and repainting all 4000 would be absurd.
+setInterval(repaintVisible, 60_000)
 
 // One-time explainer — a stranger's first 10 seconds, then never again.
 if (!localStorage.getItem('seen_intro')) {

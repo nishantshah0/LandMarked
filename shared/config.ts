@@ -21,25 +21,26 @@ export const VENUE_TRIVIA = {
   correctIndex: 0,
 }
 
-/** Box around the venue, covering the downtown core rather than one block.
- *  ±0.04° latitude ≈ 4.4 km north and south; ±0.05° longitude ≈ 4.0 km east
- *  and west at this latitude — so roughly a 9 km × 8 km rectangle that reaches
- *  the CN Tower, Rogers Centre, Union Station, Kensington and the AGO. */
+/** The Greater Toronto Area — roughly 31 km north to south and 42 km east to
+ *  west, spanning Etobicoke to Scarborough and the lakeshore up past Steeles.
+ *  Not venue-relative: the map is a city now, not a neighbourhood.
+ *
+ *  Widening further is one edit, but check the cost first — this box already
+ *  returns ~10.5k OSM elements, and the far suburbs add area much faster than
+ *  they add landmarks. */
 export const BBOX = {
-  south: VENUE.lat - 0.04,
-  west: VENUE.lng - 0.05,
-  north: VENUE.lat + 0.04,
-  east: VENUE.lng + 0.05,
+  south: 43.58,
+  west: -79.64,
+  north: 43.86,
+  east: -79.12,
 }
 
-/** Keep the N nearest to the venue, of everything the box returns.
+/** Ceiling on kept landmarks, applied nearest-to-the-venue first.
  *
- *  The trade-off to know about: pins are kept nearest-first, so raising this
- *  grows the map outward from the venue. Density near the venue is what makes
- *  the game playable on foot during an event; reach is what makes the map look
- *  like a city rather than a block. 300 gets both here — dense within a few
- *  hundred metres, still reaching the marquee landmarks a judge will look for. */
-export const MAX_LANDMARKS = 300
+ *  The ordering still matters even city-wide: if the box ever returns more than
+ *  this, what survives is the walkable core rather than an arbitrary slice.
+ *  Set high enough that the GTA box fits under it comfortably. */
+export const MAX_LANDMARKS = 6000
 
 export const CFG = {
   claimHours: 3,

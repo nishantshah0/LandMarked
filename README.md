@@ -27,7 +27,7 @@ Tier-3 landmarks are **trivia-gated**: the camera will not open until you answer
 
 It fails open by design: a landmark with no question is simply not gated, so a skipped `npm run funfacts` can never make a place unclaimable. The venue's question is hand-written in `shared/config.ts` and backfilled at boot, because that is the one gate the live demo depends on.
 
-Questions are **grounded, never invented**. The seed keeps a whitelist of OSM tags verbatim — inscription, artist, dates, material, architect, heritage status — and for landmarks carrying a `wikipedia` tag the generator also pulls the article's opening extract. The model builds the question from that material and returns `grounded: false` rather than invent anything when the grounding is thin, so a mural with nothing but a name gets no quiz instead of a plausible-sounding fabrication. Roughly 260 of the 301 landmarks carry facts; 58 have a Wikipedia article behind them.
+Questions are **grounded, never invented**. The seed keeps a whitelist of OSM tags verbatim — inscription, artist, dates, material, architect, heritage status — and for landmarks carrying a `wikipedia` tag the generator also pulls the article's opening extract. The model builds the question from that material and returns `grounded: false` rather than invent anything when the grounding is thin, so a mural with nothing but a name gets no quiz instead of a plausible-sounding fabrication. 3,165 of the 4,235 landmarks carry facts; 330 have a Wikipedia article behind them.
 
 ## The place in 3D
 
@@ -55,7 +55,9 @@ Point `SPLAT_API_URL` at any service that takes a zip of photos and returns a sp
 
 ## Pages
 
-- `/` — the map. Tap a pin: who holds it, its permanent photo archive, its own blended colour, a **Walk me there** walking route (OSRM, with a straight-line fallback), and its 3D model once one exists.
+- `/` — the map, covering the whole GTA. Zoomed out it draws clustered counts (tap one to dive in); from street zoom it draws individual pins, and only the ones inside your viewport. Tap a pin: who holds it, its permanent photo archive, its own blended colour, a **Walk me there** walking route (OSRM, with a straight-line fallback), and its 3D model once one exists.
+
+  The socket sends a deliberately thin per-pin payload — 131 bytes each, 543 KB for all 4,235 — because the full landmark record is roughly three times that and the map reads almost none of it. Sheets fetch their own detail from `/api/landmark/:id`; `/api/state` stays the fat public dataset.
 - `/dashboard.html` — the colour of the neighbourhood: live palette, the day hour by hour, verification telemetry, claims over time, standings, extremes. Everything recomputed from real data on every update.
 - `/splat.html?id=<landmarkId>` — a place rebuilt out of its own photographs.
 - `/api/landmark/<id>/photos.zip` — that place's whole archive, as the reconstruction input.

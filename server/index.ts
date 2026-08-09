@@ -32,6 +32,7 @@ import {
 import {
   addClaim,
   addPhoto,
+  allPins,
   allStates,
   byId,
   cityColour,
@@ -41,6 +42,7 @@ import {
   leaders,
   photos,
   photosByLandmark,
+  pinOf,
   stateOf,
 } from './state'
 import {
@@ -320,7 +322,7 @@ async function handleClaim(req: IncomingMessage, res: ServerResponse): Promise<v
 
   broadcast({
     t: 'claimed',
-    landmark: state,
+    landmark: pinOf(landmark, now),
     entry: {
       handle,
       avatarColor,
@@ -690,7 +692,9 @@ wss.on('connection', (ws) => {
   ws.send(
     JSON.stringify({
       t: 'init',
-      landmarks: allStates(now),
+      // Pins, not full states: /api/state stays the fat public dataset, but the
+      // map gets only what it draws — see LandmarkPin.
+      landmarks: allPins(now),
       feed: feed(),
       leaders: leaders(now),
       stats: dashStats(now, null),

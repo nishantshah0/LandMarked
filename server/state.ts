@@ -11,6 +11,7 @@ import type {
   DashStats,
   FeedEntry,
   Landmark,
+  LandmarkPin,
   LandmarkState,
   LeaderRow,
   Photo,
@@ -83,6 +84,32 @@ export function stateOf(l: Landmark, now: number): LandmarkState {
 
 export function allStates(now: number): LandmarkState[] {
   return landmarks.map((l) => stateOf(l, now))
+}
+
+/** The map's view of one landmark — see LandmarkPin on why it is this thin. */
+export function pinOf(l: Landmark, now: number): LandmarkPin {
+  const owner = currentOwner(l.id, now)
+  const mine = photosByLandmark.get(l.id) ?? []
+  const blended = blend(mine)
+  // 5 decimal places is ~1 m — finer than GPS, and it saves a byte per pin per
+  // axis, which is real money across four thousand of them.
+  const round5 = (n: number): number => Math.round(n * 1e5) / 1e5
+  return {
+    id: l.id,
+    name: l.name,
+    lat: round5(l.lat),
+    lng: round5(l.lng),
+    tier: l.tier,
+    photoCount: l.photoCount,
+    owner: owner
+      ? { handle: owner.handle, avatarColor: owner.avatarColor, expiresAt: owner.expiresAt }
+      : null,
+    tint: blended[0] ?? null,
+  }
+}
+
+export function allPins(now: number): LandmarkPin[] {
+  return landmarks.map((l) => pinOf(l, now))
 }
 
 export function feed(limit = 20): FeedEntry[] {

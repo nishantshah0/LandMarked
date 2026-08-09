@@ -4,7 +4,8 @@ Everything here is shipped and verifiable on the live site.
 
 ## Game
 - One-photo claims: stand within 100 m, shoot once, hold the place for 3 h — no account, just a handle
-- 301 real landmarks (murals, memorials, fountains, parks, churches, theatres) from OpenStreetMap, dense around Stackt Market and reaching the CN Tower, Rogers Centre, Union Station, the AGO and Kensington
+- 4,235 real landmarks (murals, memorials, fountains, parks, churches, theatres) from OpenStreetMap across the Greater Toronto Area — Etobicoke to Scarborough, lakeshore to Steeles — densest around Stackt Market, where you can actually walk between them
+- The map holds a whole city: clustered counts at city zoom that expand on tap, individual pins from street zoom, and only the pins in your viewport ever exist as DOM nodes
 - Contested ownership: holds lapse after 3 h, pins free themselves live, points by tier
 - The venue itself is a claimable tier-3 pin with an indoor-tolerant 250 m radius (judge demo)
 - "Walk me there": OSRM walking route drawn on-map with distance/ETA, straight-line fallback

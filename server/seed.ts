@@ -14,7 +14,7 @@ import { insertLandmarks, landmarkCount } from './db'
 // points, and querying only nodes silently drops most of them. `out center`
 // gives each way a representative coordinate.
 const B = `(${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east})`
-const QUERY = `[out:json][timeout:120];
+const QUERY = `[out:json][timeout:180];
 (
   nwr["tourism"~"attraction|artwork|museum|viewpoint|gallery|zoo|aquarium"]${B};
   nwr["historic"]${B};
@@ -209,7 +209,12 @@ async function main(): Promise<void> {
     `[seed] ${near.length} landmarks kept of ${kept.length} found — ` +
       `tier1 ${byTier[1] ?? 0} · tier2 ${byTier[2] ?? 0} · tier3 ${byTier[3] ?? 0}`,
   )
-  console.log(`[seed] furthest is ${Math.round(furthest)}m from the venue — all walkable`)
+  const walkable = near.filter(
+    (l) => haversineM(VENUE.lat, VENUE.lng, l.lat, l.lng) <= 2000,
+  ).length
+  console.log(
+    `[seed] ${walkable} within a 2km walk of the venue · furthest is ${(furthest / 1000).toFixed(1)}km`,
+  )
   process.exit(0)
 }
 

@@ -81,6 +81,24 @@ export interface LandmarkState extends Omit<Landmark, 'funFact'> {
   splatNeeds: number
 }
 
+/** What one pin needs to be drawn, and nothing else.
+ *
+ *  City-wide, the full LandmarkState is far too heavy to send 4000 of: most of
+ *  its weight is detail only a opened sheet reads (description, palette, the
+ *  question, the grounding tags), and the archive blob alone was a quarter of a
+ *  megabyte. Sheets fetch /api/landmark/:id, so the map never needs any of it. */
+export interface LandmarkPin {
+  id: string
+  name: string
+  lat: number
+  lng: number
+  tier: Tier
+  photoCount: number
+  owner: { handle: string; avatarColor: string; expiresAt: number } | null
+  /** dominant colour of this place's archive, for the pin tint */
+  tint: [number, number, number] | null
+}
+
 export interface FeedEntry {
   handle: string
   avatarColor: string
@@ -158,13 +176,13 @@ export type ClientMsg = { t: 'hello'; handle: string | null }
 export type ServerMsg =
   | {
       t: 'init'
-      landmarks: LandmarkState[]
+      landmarks: LandmarkPin[]
       feed: FeedEntry[]
       leaders: LeaderRow[]
       stats: DashStats
       now: number
     }
-  | { t: 'claimed'; landmark: LandmarkState; entry: FeedEntry }
+  | { t: 'claimed'; landmark: LandmarkPin; entry: FeedEntry }
   | { t: 'tick'; leaders: LeaderRow[]; stats: DashStats; now: number }
   | { t: 'splat'; landmarkId: string; landmarkName: string; state: SplatState; splatUrl: string | null }
 
