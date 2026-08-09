@@ -273,6 +273,47 @@ body {
   box-shadow: 0 0 0 6px rgba(47, 125, 148, 0.22);
 }
 
+/* ---------- optional Reve pin art ----------
+   Drop pin-free.svg / pin-owned.svg / pin-venue.svg into web/public/brand/ and
+   the circles above are replaced automatically. The probe in index.html sets
+   data-brand="on" only once a file actually loads, so a missing or
+   half-finished asset set can never leave the map blank — without the files
+   none of this applies and the CSS pins ship exactly as they do today.
+
+   Same hazard as the pulse bug: this element IS MapLibre's marker root, so
+   nothing here may touch `transform`. */
+
+[data-brand='on'] .pin {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.34));
+}
+
+[data-brand='on'] .pin.free {
+  background-image: url('/brand/pin-free.svg');
+  animation: none; /* the art carries the invitation; keep the map calm */
+}
+
+[data-brand='on'] .pin.owned {
+  background-image: url('/brand/pin-owned.svg');
+}
+
+/* The venue is the judge-demo pin, so it gets its own mark when one exists. */
+[data-brand='on'] .pin.major {
+  background-image: url('/brand/pin-venue.svg');
+}
+
+/* The handle initial may now sit on light art — give it its own contrast
+   instead of assuming a dark disc underneath. */
+[data-brand='on'] .pin-dot {
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(247, 245, 239, 0.85);
+}
+
 /* ---------- sheet ---------- */
 
 .sheet {

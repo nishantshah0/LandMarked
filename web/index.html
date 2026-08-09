@@ -11,7 +11,23 @@
       content="Claim real places near you with one photo. The place keeps every photo forever — and together they show what colour the neighbourhood is right now."
     />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2317181c'/><circle cx='16' cy='14' r='6' fill='none' stroke='%23f7f5ef' stroke-width='2.5'/><circle cx='16' cy='14' r='2' fill='%23e5533d'/><path d='M16 21 L16 27' stroke='%23f7f5ef' stroke-width='2.5'/></svg>" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/brand/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="stylesheet" href="/style.css" />
+    <script>
+      // Brand assets are optional. Probe one file; only if it genuinely loads do
+      // we switch the map to the illustrated pins (see style.css). A missing or
+      // half-finished asset set therefore degrades to the CSS pins rather than
+      // leaving forty-one empty squares across the map.
+      ;(function () {
+        var probe = new Image()
+        probe.onload = function () {
+          document.documentElement.dataset.brand = 'on'
+        }
+        probe.src = '/brand/pin-free.svg'
+      })()
+    </script>
   </head>
   <body>
     <div id="map"></div>

@@ -13,6 +13,11 @@ const OPENAI_MODEL = process.env.OPENAI_VISION_MODEL ?? 'gpt-4o-mini'
 
 export const visionEnabled = (): boolean => ANTHROPIC_KEY.length > 0 || OPENAI_KEY.length > 0
 
+/** Which provider a claim will actually be judged by — printed at boot so the
+ *  pitch can never drift from what is really running. */
+export const visionProvider = (): string =>
+  ANTHROPIC_KEY ? `anthropic ${ANTHROPIC_MODEL}` : OPENAI_KEY ? `openai ${OPENAI_MODEL}` : 'none'
+
 export interface Verdict {
   checked: boolean
   isMatch: boolean
@@ -138,8 +143,12 @@ export async function verifyPhoto(
   const timeout = setTimeout(() => controller.abort(), 12_000)
   try {
     const q = question(landmarkName, category, description)
-    if (OPENAI_KEY) return await viaOpenAI(jpegBase64, q, controller.signal)
-    return await viaAnthropic(jpegBase64, q, controller.signal)
+    // Anthropic first when both keys are present: the README and the Devpost
+    // copy both name Anthropic, and the pitch has to match what actually ran.
+    // Flip these two lines to run OpenAI instead — but change the write-up at
+    // the same time.
+    if (ANTHROPIC_KEY) return await viaAnthropic(jpegBase64, q, controller.signal)
+    return await viaOpenAI(jpegBase64, q, controller.signal)
   } catch (e) {
     console.warn('[vision] failed:', (e as Error).message)
     return UNCHECKED

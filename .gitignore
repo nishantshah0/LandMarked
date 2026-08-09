@@ -3,7 +3,7 @@ web-dist/
 data/
 .DS_Store
 *.log
-.claude/settings.local.json
+*.local.json
 .env
 .env.*
 !.env.example
