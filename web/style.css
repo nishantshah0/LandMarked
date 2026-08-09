@@ -273,6 +273,47 @@ body {
   box-shadow: 0 0 0 6px rgba(47, 125, 148, 0.22);
 }
 
+/* ---------- optional Reve pin art ----------
+   Drop pin-free.svg / pin-owned.svg / pin-venue.svg into web/public/brand/ and
+   the circles above are replaced automatically. The probe in index.html sets
+   data-brand="on" only once a file actually loads, so a missing or
+   half-finished asset set can never leave the map blank — without the files
+   none of this applies and the CSS pins ship exactly as they do today.
+
+   Same hazard as the pulse bug: this element IS MapLibre's marker root, so
+   nothing here may touch `transform`. */
+
+[data-brand='on'] .pin {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.34));
+}
+
+[data-brand='on'] .pin.free {
+  background-image: url('/brand/pin-free.svg');
+  animation: none; /* the art carries the invitation; keep the map calm */
+}
+
+[data-brand='on'] .pin.owned {
+  background-image: url('/brand/pin-owned.svg');
+}
+
+/* The venue is the judge-demo pin, so it gets its own mark when one exists. */
+[data-brand='on'] .pin.major {
+  background-image: url('/brand/pin-venue.svg');
+}
+
+/* The handle initial may now sit on light art — give it its own contrast
+   instead of assuming a dark disc underneath. */
+[data-brand='on'] .pin-dot {
+  color: var(--ink);
+  text-shadow: 0 1px 0 rgba(247, 245, 239, 0.85);
+}
+
 /* ---------- sheet ---------- */
 
 .sheet {
@@ -324,6 +365,20 @@ body {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+
+.sheet-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cat-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  /* SVGs, small on screen — sharpen instead of blurring at odd zoom levels */
+  image-rendering: -webkit-optimize-contrast;
 }
 
 .sheet h2 {
@@ -498,28 +553,77 @@ body {
 .strip {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: 116px;
-  gap: 8px;
+  grid-auto-columns: 122px;
+  gap: 14px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  /* room for the tilt and the thumbtack without clipping either */
+  padding: 10px 4px 14px;
+}
+
+/* Every photo here is the actual product — permanent, kept forever. A plain
+   rounded-square grid undersells that. An instant-print card, tilted like it
+   was actually pinned up, is the same idea a physical archive wall would use. */
+.shot {
+  position: relative;
+  background: #fff;
+  padding: 7px 7px 20px;
+  border-radius: 2px;
+  box-shadow:
+    0 1px 2px rgba(23, 24, 28, 0.14),
+    0 6px 14px rgba(23, 24, 28, 0.16);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.strip .shot:nth-child(3n) {
+  transform: rotate(-2.4deg);
+}
+.strip .shot:nth-child(3n + 1) {
+  transform: rotate(1.6deg);
+}
+.strip .shot:nth-child(3n + 2) {
+  transform: rotate(-0.6deg);
+}
+
+.strip .shot:hover {
+  transform: rotate(0deg) translateY(-3px) scale(1.03);
+  box-shadow:
+    0 2px 4px rgba(23, 24, 28, 0.16),
+    0 10px 22px rgba(23, 24, 28, 0.22);
+  z-index: 1;
+}
+
+/* the thumbtack, echoing the map pins rather than a generic dot */
+.shot::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 2px rgba(23, 24, 28, 0.4);
 }
 
 .shot img {
-  width: 116px;
-  height: 116px;
+  width: 108px;
+  height: 108px;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 1px;
   background: #ddd;
   display: block;
 }
 
 .shot figcaption {
-  font-size: 10.5px;
-  opacity: 0.65;
-  margin-top: 4px;
+  font-size: 10px;
+  opacity: 0.62;
+  margin-top: 6px;
   display: flex;
   justify-content: space-between;
   gap: 4px;
+  font-family: var(--serif);
+  font-style: italic;
 }
 
 .none {
@@ -1013,4 +1117,32 @@ body {
 .board li:last-child {
   border-bottom: none;
   margin-bottom: 6px;
+}
+
+/* ---------- the shutter (fires once, on a successful claim) ---------- */
+
+.shutter {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: var(--ink);
+  pointer-events: none;
+  clip-path: circle(150% at 50% 50%);
+  animation: shutter-open 620ms cubic-bezier(0.32, 0, 0.24, 1) forwards;
+}
+
+@keyframes shutter-open {
+  0% {
+    clip-path: circle(150% at 50% 50%);
+  }
+  100% {
+    clip-path: circle(0% at 50% 50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shutter {
+    animation: none;
+    clip-path: circle(0% at 50% 50%);
+  }
 }

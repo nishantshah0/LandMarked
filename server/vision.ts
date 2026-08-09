@@ -8,13 +8,22 @@
 //
 // Claude does the judging; Gemini stands behind it (see server/llm.ts).
 
-import { askJSON } from './llm'
+import { askJSON, providers } from './llm'
 
 const CLAUDE_MODEL = (): string => process.env.VISION_MODEL ?? 'claude-opus-5'
 const GEMINI_MODEL = (): string => process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash'
 
-export const visionEnabled = (): boolean =>
-  (process.env.ANTHROPIC_API_KEY ?? '').length > 0 || (process.env.GEMINI_API_KEY ?? '').length > 0
+export const visionEnabled = (): boolean => providers().length > 0
+
+/** Which provider will actually judge a claim, printed at boot — so the pitch
+ *  can never drift from what is really running. (Idea carried over from the
+ *  brand branch, where it guarded the same risk against a different provider
+ *  pair.) */
+export const visionProvider = (): string => {
+  const have = providers()
+  if (have.length === 0) return 'none'
+  return have.map((p) => (p === 'claude' ? CLAUDE_MODEL() : GEMINI_MODEL())).join(' → ')
+}
 
 export interface Verdict {
   checked: boolean
