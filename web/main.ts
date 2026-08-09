@@ -931,6 +931,9 @@ function connect(): void {
       paintColourbar(m.stats.city.palette)
       standings = m.standings
       if (!$('board').hasAttribute('hidden')) paintBoard()
+      // the map admits other people exist: live presence in the Now chip
+      const nc = document.getElementById('nowChip')
+      if (nc) nc.textContent = m.stats.presence > 1 ? `Now · ${m.stats.presence} here` : 'Now'
     }
   }
   ws.onclose = () => setTimeout(connect, 1500)

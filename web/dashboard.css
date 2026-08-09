@@ -523,3 +523,198 @@ body.dash {
   margin: 4px 0 10px;
   font-size: 11.5px;
 }
+
+/* ---------------- the pulse page ---------------- */
+
+.pulsehero {
+  text-align: center;
+  padding: 26px 0 30px;
+}
+
+.pulsehero b {
+  font-family: var(--serif);
+  font-size: 96px;
+  line-height: 1;
+  display: block;
+}
+
+.pulsehero span {
+  font-size: 14px;
+  font-style: italic;
+  opacity: 0.65;
+}
+
+.trend {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 9px 0;
+  border-bottom: 1px dotted var(--line);
+}
+
+.trend .tn {
+  font-family: var(--serif);
+  font-size: 21px;
+  opacity: 0.45;
+  min-width: 22px;
+}
+
+.trend .tw {
+  flex: 1;
+  min-width: 0;
+}
+
+.trend .tw b {
+  font-size: 14px;
+}
+
+.trend .tw em {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  opacity: 0.55;
+  margin: 2px 0 5px;
+}
+
+.theat {
+  display: block;
+  height: 8px;
+  background: rgba(23, 24, 28, 0.07);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.theat i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.7s ease;
+}
+
+.starts {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.start {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 10px 12px;
+  background: rgba(23, 24, 28, 0.02);
+}
+
+.start:hover {
+  background: rgba(23, 24, 28, 0.05);
+}
+
+.start img {
+  width: 34px;
+  height: 34px;
+  flex: none;
+}
+
+.start b {
+  font-size: 13.5px;
+  display: block;
+}
+
+.start em {
+  font-style: normal;
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+/* ---------------- the colour clock ---------------- */
+
+.clockwrap {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 2px;
+}
+
+.clockwrap svg {
+  width: min(260px, 100%);
+  height: auto;
+}
+
+.clock-hour {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--ink);
+  opacity: 0.5;
+}
+
+.clock-mid {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12px;
+  fill: var(--ink);
+  opacity: 0.65;
+}
+
+/* ---------------- walk rings ---------------- */
+
+.ringwrap {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ringwrap svg {
+  width: 132px;
+  height: 132px;
+  flex: none;
+}
+
+.ringlegend {
+  flex: 1;
+}
+
+.ringlegend .row {
+  grid-template-columns: 14px 1fr 60px;
+}
+
+.ringlegend .sw {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink);
+}
+
+/* ---------------- the neighbourhood DNA strip ---------------- */
+
+.dna {
+  display: flex;
+  height: 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  margin-bottom: 10px;
+}
+
+.dna i {
+  display: block;
+  height: 100%;
+}
+
+.dnalegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 11.5px;
+}
+
+.dnalegend span i {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  margin-right: 5px;
+}

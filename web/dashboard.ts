@@ -189,6 +189,104 @@ function tagLabel(tag: string): string {
 
 const TIER_NAME: Record<number, string> = { 1: 'Standard', 2: 'Landmark', 3: 'Iconic' }
 
+/* ---------------- hand-drawn visualizations ---------------- */
+
+/** One donut segment from angle a0 to a1 (radians, 12 o'clock = -π/2). */
+function seg(cx: number, cy: number, r1: number, r2: number, a0: number, a1: number): string {
+  const p = (r: number, a: number): string => `${cx + r * Math.cos(a)},${cy + r * Math.sin(a)}`
+  return (
+    `M ${p(r1, a0)} A ${r1} ${r1} 0 0 1 ${p(r1, a1)} ` +
+    `L ${p(r2, a1)} A ${r2} ${r2} 0 0 0 ${p(r2, a0)} Z`
+  )
+}
+
+/** The day as a ring: 24 hour-segments that fill with real photographed colour. */
+function colourClock(byHour: { hour: number; palette: [number, number, number][]; n: number }[]): string {
+  const by = new Map(byHour.map((h) => [h.hour, h]))
+  const nowHour = new Date().getHours()
+  const cx = 130
+  const cy = 130
+  const parts: string[] = []
+  for (let h = 0; h < 24; h++) {
+    const a0 = -Math.PI / 2 + (h / 24) * 2 * Math.PI + 0.012
+    const a1 = -Math.PI / 2 + ((h + 1) / 24) * 2 * Math.PI - 0.012
+    const d = by.get(h)
+    const fill = d && d.palette[0] ? hex(d.palette[0]) : 'rgba(23,24,28,0.05)'
+    const ring = h === nowHour ? ' stroke="var(--accent)" stroke-width="2"' : ''
+    const title = d ? `<title>${String(h).padStart(2, '0')}:00 — ${d.n} photograph${d.n === 1 ? '' : 's'}</title>` : ''
+    parts.push(`<path d="${seg(cx, cy, 122, 74, a0, a1)}" fill="${fill}"${ring}>${title}</path>`)
+  }
+  for (const h of [0, 6, 12, 18]) {
+    const a = -Math.PI / 2 + (h / 24) * 2 * Math.PI
+    parts.push(
+      `<text class="clock-hour" x="${cx + 112 * Math.cos(a)}" y="${cy + 112 * Math.sin(a) + 3}" text-anchor="middle">${h}</text>`,
+    )
+  }
+  const photographedHours = byHour.length
+  parts.push(
+    `<text class="clock-mid" x="${cx}" y="${cy - 2}" text-anchor="middle">${
+      photographedHours ? `${photographedHours} of 24` : 'unphotographed'
+    }</text>`,
+    `<text class="clock-mid" x="${cx}" y="${cy + 14}" text-anchor="middle">${
+      photographedHours ? 'hours have a colour' : 'the ring fills as the day is seen'
+    }</text>`,
+  )
+  return `<svg viewBox="0 0 260 260" role="img" aria-label="the day as a colour clock">${parts.join('')}</svg>`
+}
+
+/** Distance from the venue as concentric rings; opacity carries the count. */
+function walkRings(bands: { label: string; count: number }[]): string {
+  const max = Math.max(...bands.map((b) => b.count), 1)
+  const radii = [22, 40, 58, 76].slice(0, bands.length)
+  const rings = bands
+    .map((b, i) => {
+      const o = 0.08 + (b.count / max) * 0.72
+      return `<circle cx="66" cy="66" r="${radii[i]}" fill="none" stroke="rgba(23,24,28,${o.toFixed(2)})" stroke-width="15"><title>${b.label}: ${b.count}</title></circle>`
+    })
+    .join('')
+  const legend = bands
+    .map((b, i) => {
+      const o = 0.08 + (b.count / max) * 0.72
+      return (
+        `<div class="row"><span class="sw" style="background:rgba(23,24,28,${o.toFixed(2)})"></span>` +
+        `<span class="rl">${b.label}</span><span class="rn">${b.count.toLocaleString()}</span></div>`
+      )
+    })
+    .join('')
+  return (
+    `<svg viewBox="0 0 132 132" role="img" aria-label="distance from the venue">` +
+    `${rings}<circle cx="66" cy="66" r="4" fill="var(--accent)"><title>the venue</title></circle></svg>` +
+    `<div class="ringlegend">${legend}</div>`
+  )
+}
+
+/** ink shade per category rank — colour stays reserved for photographs */
+const DNA_SHADES = [0.85, 0.68, 0.54, 0.42, 0.32, 0.24, 0.17, 0.11, 0.06]
+
+/** The whole corpus as one strip: what the neighbourhood is made of. */
+function dnaStrip(cats: { category: string; count: number }[], total: number): string {
+  const shown = cats.slice(0, 8)
+  const rest = Math.max(0, total - shown.reduce((s, c) => s + c.count, 0))
+  const rows = [...shown.map((c, i) => ({ ...c, shade: DNA_SHADES[i] }))]
+  if (rest > 0) rows.push({ category: 'everything else', count: rest, shade: DNA_SHADES[8] })
+  const strip = rows
+    .map(
+      (r) =>
+        `<i style="width:${((r.count / total) * 100).toFixed(2)}%;background:rgba(23,24,28,${r.shade})"><` +
+        `/i>`,
+    )
+    .join('')
+  const legend = rows
+    .slice(0, 6)
+    .map(
+      (r) =>
+        `<span><i style="background:rgba(23,24,28,${r.shade})"></i>${r.category.replace(/_/g, ' ')} ` +
+        `${r.count.toLocaleString()}</span>`,
+    )
+    .join('')
+  return `<div class="dna">${strip}</div><div class="dnalegend">${legend}</div>`
+}
+
 function renderCorpus(c: DashStats['corpus']): void {
   if (c.total === 0) return
 
@@ -202,13 +300,11 @@ function renderCorpus(c: DashStats['corpus']): void {
       ? `<span class="ct"><i>oldest datable</i><b>${c.oldest.year}</b><em>${c.oldest.name}</em></span>`
       : '')
 
-  $('corpusCats').innerHTML = bars(
-    c.byCategory.map((x) => ({ label: x.category, n: x.count })),
-  )
+  $('corpusCats').innerHTML = dnaStrip(c.byCategory, c.total)
   $('corpusGround').innerHTML = bars(
     c.grounding.slice(0, 8).map((x) => ({ label: tagLabel(x.tag), n: x.count })),
   )
-  $('corpusWalk').innerHTML = bars(c.walkBands.map((x) => ({ label: x.label, n: x.count })))
+  $('corpusWalk').innerHTML = walkRings(c.walkBands)
 
   const general = c.questionsWritten - c.questionsPlaceScoped
   $('corpusQ').innerHTML =
@@ -239,15 +335,7 @@ function render(stats: DashStats, standings: Standings): void {
   countUp($('cPlayers'), stats.players)
   countUp($('cPlaces'), stats.landmarks)
 
-  $('byHour').innerHTML =
-    city.byHour
-      .map(
-        (h) =>
-          `<div class="hourrow"><span class="hl">${String(h.hour).padStart(2, '0')}:00</span>` +
-          `<span class="hp">${h.palette.map((c) => `<i style="background:${hex(c)}"></i>`).join('')}</span>` +
-          `<span class="hn">${h.n}</span></div>`,
-      )
-      .join('') || '<p class="none">Not enough yet.</p>'
+  $('clock').innerHTML = colourClock(city.byHour)
 
   const pct = (n: number): string => `${Math.round(n * 100)}%`
   $('verify').innerHTML =

@@ -439,7 +439,7 @@ const server = createServer((req, res) => {
       landmarks: allStates(now),
       feed: feed(),
       standings: standings(now),
-      stats: dashStats(now, null),
+      stats: dashStats(now, null, wss.clients.size),
       now,
     })
     return
@@ -544,7 +544,7 @@ wss.on('connection', (ws) => {
       landmarks: allPins(now),
       feed: feed(),
       standings: standings(now),
-      stats: dashStats(now, null),
+      stats: dashStats(now, null, wss.clients.size),
       now,
     } satisfies ServerMsg),
   )
@@ -552,7 +552,7 @@ wss.on('connection', (ws) => {
 
 setInterval(() => {
   const now = Date.now()
-  broadcast({ t: 'tick', standings: standings(now), stats: dashStats(now, null), now })
+  broadcast({ t: 'tick', standings: standings(now), stats: dashStats(now, null, wss.clients.size), now })
 }, CFG.broadcastMs)
 
 process.on('uncaughtException', (e) => console.error('[seen] uncaught:', e))

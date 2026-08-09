@@ -2,8 +2,9 @@
 // Ownership is always derived from claims — never stored — so nothing has to
 // run on a timer to expire anything.
 
-import { CFG, TIER_POINTS, type Tier } from '../shared/config'
+import { CFG, TIER_POINTS, VENUE, type Tier } from '../shared/config'
 import { blend, describe, hex } from '../shared/palette'
+import { haversineM } from '../shared/geo'
 import { isGated, parseTrivia, publicTrivia } from '../shared/trivia'
 import type {
   CityColour,
@@ -248,7 +249,99 @@ export function cityColour(paintingKey: string | null): CityColour {
   }
 }
 
-export function dashStats(now: number, paintingKey: string | null): DashStats {
+// The corpus never changes while the server runs — landmarks are seeded
+// offline and questions are written offline. Computing it fresh on every 2 s
+// broadcast meant ~1.2 M haversines and 4,000 JSON.parses per tick for an
+// answer that is always the same. Once is enough.
+let corpusCache: DashStats['corpus'] | null = null
+
+/** Grounding richness per landmark, computed once — startHere reads it every tick. */
+const groundInfo = new Map<string, { facts: number; hasWiki: boolean }>()
+for (const l of landmarks) {
+  let facts = 0
+  let hasWiki = false
+  if (l.osmFacts) {
+    try {
+      const t = JSON.parse(l.osmFacts) as Record<string, string>
+      hasWiki = 'wikipedia' in t
+      facts = Object.keys(t).filter((k) => k !== 'wikipedia' && k !== 'wikidata').length
+    } catch {
+      // unparseable rows simply count as ungrounded
+    }
+  }
+  groundInfo.set(l.id, { facts, hasWiki })
+}
+
+const TRENDING_HALF_LIFE_MS = 90 * 60_000
+const TRENDING_WINDOW_MS = 6 * 3_600_000
+
+function trending(now: number): DashStats['trending'] {
+  const score = new Map<string, { s: number; recent: number; lastAt: number }>()
+  for (const c of claims) {
+    const age = now - c.claimedAt
+    if (age > TRENDING_WINDOW_MS) continue
+    const e = score.get(c.landmarkId) ?? { s: 0, recent: 0, lastAt: 0 }
+    e.s += Math.pow(0.5, age / TRENDING_HALF_LIFE_MS)
+    if (age < 3 * 3_600_000) e.recent++
+    if (c.claimedAt > e.lastAt) e.lastAt = c.claimedAt
+    score.set(c.landmarkId, e)
+  }
+  const rows = [...score.entries()].sort((a, b) => b[1].s - a[1].s).slice(0, 8)
+  const max = rows[0]?.[1].s ?? 1
+  return rows.map(([id, e]) => {
+    const l = byId.get(id)
+    const mine = photosByLandmark.get(id) ?? []
+    return {
+      landmarkId: id,
+      name: l?.name ?? id,
+      tier: l?.tier ?? 1,
+      heat: Math.round((e.s / max) * 100) / 100,
+      recent: e.recent,
+      lastAt: e.lastAt,
+      tint: blend(mine)[0] ?? null,
+    }
+  })
+}
+
+function startHere(): DashStats['startHere'] {
+  return landmarks
+    .filter((l) => l.photoCount === 0 && l.id !== 'venue')
+    .map((l) => ({
+      l,
+      g: groundInfo.get(l.id) ?? { facts: 0, hasWiki: false },
+      d: haversineM(VENUE.lat, VENUE.lng, l.lat, l.lng),
+    }))
+    .filter((x) => x.d <= 1500 && (x.g.hasWiki || x.g.facts >= 2))
+    .sort((a, b) => Number(b.g.hasWiki) - Number(a.g.hasWiki) || a.d - b.d)
+    .slice(0, 6)
+    .map((x) => ({
+      landmarkId: x.l.id,
+      name: x.l.name,
+      category: x.l.category,
+      distanceM: Math.round(x.d),
+      hasWiki: x.g.hasWiki,
+      facts: x.g.facts,
+    }))
+}
+
+function today(now: number): DashStats['today'] {
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  const t0 = start.getTime()
+  const map = new Map<string, { avatarColor: string; n: number }>()
+  for (const c of claims) {
+    if (c.claimedAt < t0) continue
+    const e = map.get(c.handle) ?? { avatarColor: c.avatarColor, n: 0 }
+    e.n++
+    map.set(c.handle, e)
+  }
+  return [...map.entries()]
+    .map(([handle, e]) => ({ handle, avatarColor: e.avatarColor, n: e.n }))
+    .sort((a, b) => b.n - a.n)
+    .slice(0, 5)
+}
+
+export function dashStats(now: number, paintingKey: string | null, presence = 0): DashStats {
   const attempts = allAttempts()
   const passed = attempts.filter((a) => a.passed === 1)
   const scored = attempts.filter((a) => a.confidence !== null && a.confidence > 0)
@@ -279,8 +372,14 @@ export function dashStats(now: number, paintingKey: string | null): DashStats {
   const contest = new Map<string, number>()
   for (const c of claims) contest.set(c.landmarkId, (contest.get(c.landmarkId) ?? 0) + 1)
 
+  if (!corpusCache) corpusCache = corpusStats(landmarks)
+
   return {
-    corpus: corpusStats(landmarks),
+    corpus: corpusCache,
+    presence,
+    trending: trending(now),
+    startHere: startHere(),
+    today: today(now),
     totalClaims: claims.length,
     activeClaims: landmarks.filter((l) => currentOwner(l.id, now)).length,
     players: new Set(claims.map((c) => c.handle)).size,

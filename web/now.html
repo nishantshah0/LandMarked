@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Right now — SEEN</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2317181c'/><circle cx='16' cy='14' r='6' fill='none' stroke='%23f7f5ef' stroke-width='2.5'/><circle cx='16' cy='14' r='2' fill='%23e5533d'/><path d='M16 21 L16 27' stroke='%23f7f5ef' stroke-width='2.5'/></svg>" />
+    <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/dashboard.css" />
+  </head>
+  <body class="dash">
+    <header class="dhead">
+      <div>
+        <h1>Right now</h1>
+        <p>
+          The neighbourhood's pulse — who's out, what's gathering momentum, and where to start.
+          Every number is live over the same socket the map uses.
+        </p>
+      </div>
+      <div class="right">
+        <a class="chip" href="/">The map</a>
+        <a class="chip" href="/dashboard.html">The colour</a>
+        <span id="live" class="livechip"><i></i><span id="liveLabel">connecting</span></span>
+      </div>
+    </header>
+
+    <section class="pulsehero">
+      <b id="presence">—</b>
+      <span id="presenceLabel">people looking at the neighbourhood right now</span>
+    </section>
+
+    <div class="two">
+      <section class="card">
+        <h2>Gathering momentum</h2>
+        <p class="sub">claims scored by recency — a place cools with a 90-minute half-life</p>
+        <div id="trending"></div>
+      </section>
+
+      <section class="card">
+        <h2>As it happens</h2>
+        <p class="sub">every claim, newest first</p>
+        <ol id="feed" class="feed"></ol>
+      </section>
+    </div>
+
+    <div class="two">
+      <section class="card">
+        <h2>Start here</h2>
+        <p class="sub">
+          nearby places with real stories — a Wikipedia page or documented facts — that nobody has
+          photographed yet. First photo names the colour.
+        </p>
+        <div id="startHere" class="starts"></div>
+      </section>
+
+      <section class="card">
+        <h2>Today's explorers</h2>
+        <p class="sub">most places claimed since midnight</p>
+        <ol id="today" class="rank"></ol>
+      </section>
+    </div>
+
+    <p class="dfoot">
+      Made at SummerHacks&nbsp;’26, Toronto. Raw data: <a href="/api/state">/api/state</a>
+    </p>
+
+    <script type="module" src="/now.ts"></script>
+  </body>
+</html>

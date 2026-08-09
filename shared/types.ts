@@ -153,8 +153,43 @@ export interface CorpusStats {
   questionsPlaceScoped: number
 }
 
+/** A place gathering momentum: claims scored by recency, half-life 90 min. */
+export interface TrendingRow {
+  landmarkId: string
+  name: string
+  tier: number
+  /** 0..1, share of the hottest place's score */
+  heat: number
+  /** claims in the last 3 h */
+  recent: number
+  lastAt: number
+  tint: [number, number, number] | null
+}
+
+/** A first quest: a nearby, well-documented place nobody has photographed. */
+export interface StartHereRow {
+  landmarkId: string
+  name: string
+  category: string
+  distanceM: number
+  hasWiki: boolean
+  /** how many real facts its OSM record carries */
+  facts: number
+}
+
+export interface TodayRow {
+  handle: string
+  avatarColor: string
+  n: number
+}
+
 export interface DashStats {
   corpus: CorpusStats
+  /** live sockets connected right now — people looking at the neighbourhood */
+  presence: number
+  trending: TrendingRow[]
+  startHere: StartHereRow[]
+  today: TodayRow[]
   totalClaims: number
   activeClaims: number
   players: number
