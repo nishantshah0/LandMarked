@@ -3,72 +3,83 @@
 //   npm run funfacts -- --gated   only the trivia-gated ones (tier 3)
 //   npm run funfacts -- --limit 50
 //
-// Runs on either provider: OpenAI if OPENAI_API_KEY is set, otherwise Anthropic.
+// Runs on Claude, falling back to Gemini if Claude is unavailable or fails.
 //
-// The whole design here is about specificity without invention. A question like
-// "what are murals usually made of?" is filler — it could be asked at any of the
-// 300 pins. But a *specific* question about an obscure mural is worse: there is
-// nothing to base it on, so the model would make one up, and a wrong "fun fact"
-// attached to a real place is the one output this project cannot ship.
+// Every landmark gets a question — engagement is the point — but not every
+// landmark deserves the same KIND of question, and that distinction is the whole
+// design.
 //
-// So the question is grounded rather than guessed. Two sources, both real:
-//   1. the OSM tags kept verbatim at seed time (inscription, artist, dates,
-//      material, architect, heritage status — see FACT_TAGS in seed.ts);
-//   2. for landmarks carrying a `wikipedia` tag, the article's opening extract.
+// Where real material exists (a Wikipedia extract, an inscription, an artist, a
+// date, a material), the question is about that exact spot, built from facts
+// kept verbatim at seed time. Where the record is just a name and a category —
+// about a quarter of them — asking something specific would mean inventing it,
+// and a fabricated "fun fact" pinned to a real place is the one output this
+// project must never ship. Those get an honest question about the category
+// instead: how murals get commissioned, why memorials face the way they do.
 //
-// The model is given that grounding, told to build the question from it, and
-// told to return grounded:false rather than invent anything when the grounding
-// is too thin. A skipped landmark simply has no quiz — and because the gate
-// fails open, a skipped tier-3 landmark is claimable without one.
+// The scope travels with the question so the UI can label a general one as
+// general. Nothing ever poses as local knowledge it does not have.
 
 import './env' // must stay first — see server/env.ts
-import { CFG } from '../shared/config'
+import { CFG, VENUE } from '../shared/config'
+import { haversineM } from '../shared/geo'
 import type { Landmark } from '../shared/types'
 import { allLandmarks, setFunFact } from './db'
+import { askJSON, providers } from './llm'
 
-const ANTHROPIC_KEY = (): string => process.env.ANTHROPIC_API_KEY ?? ''
-const OPENAI_KEY = (): string => process.env.OPENAI_API_KEY ?? ''
-const ANTHROPIC_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
-const OPENAI_MODEL = (): string => process.env.OPENAI_FUNFACT_MODEL ?? 'gpt-4o-mini'
+const CLAUDE_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
+const GEMINI_MODEL = (): string => process.env.GEMINI_FUNFACT_MODEL ?? 'gemini-2.5-flash'
+
+/** Gemini's free tier allows 20 requests/minute; 3.2s between calls sits just
+ *  under it. Override with FUNFACT_PACE_MS on a paid key. */
+const PACE_MS = Number(process.env.FUNFACT_PACE_MS ?? 3200)
 
 interface FunFact {
   question: string
   options: string[]
   correctIndex: number
+  /** 'place' = about this exact spot; 'category' = about this kind of thing.
+   *  Surfaced in the UI so a general question never poses as a local fact. */
+  scope: 'place' | 'category'
 }
 
 const SYSTEM =
-  'You write one multiple-choice question about a specific real place, for a city-exploration game. ' +
-  'The question must be about THIS place in particular — its own history, its maker, its materials, ' +
-  'its dates, what its inscription says, what it commemorates. A question that would read the same at ' +
-  'any other park, mural or memorial is a failure.\n\n' +
-  'Build the question only from the supplied facts. You may use well-known outside knowledge about ' +
-  'famous landmarks, but never invent a specific claim about an obscure one.\n\n' +
-  'If the supplied facts contain nothing specific enough — just a name and a generic category — set ' +
-  'grounded to false and leave the other fields empty. Returning nothing is correct and expected for ' +
-  'roughly half of these places; a plausible-sounding invented fact is the worst possible answer.\n\n' +
-  'When grounded: four options, one correct, three plausible but clearly wrong to someone standing ' +
-  'there. Put the exact supplying fact in sourceFact.'
+  'You write one short, surprising multiple-choice question for a city-exploration game, to be read ' +
+  'by someone standing at the place. Every place gets a question. Choose its scope honestly.\n\n' +
+  'scope "place" — use this whenever the supplied facts contain anything specific: a Wikipedia ' +
+  'extract, an inscription, an artist, a date, a height, a material, an architect. Build the question ' +
+  'from that material and put the exact supplying fact in sourceFact. Prefer this scope; it is the ' +
+  'more interesting question.\n\n' +
+  'scope "category" — use this only when the facts really are just a name and a generic category. ' +
+  'Then ask something genuinely true and interesting about that KIND of thing: how murals get ' +
+  'commissioned, why war memorials face east, what a "parkette" legally is, why fountains were ' +
+  'originally built. Teach the player something real about the category. Leave sourceFact empty.\n\n' +
+  'The one unbreakable rule: never invent a specific claim about this exact spot. If you do not know ' +
+  'who painted this mural or what year it went up, do not guess — ask a category question instead. A ' +
+  'plausible-sounding fabrication attached to a real place is the worst possible output.\n\n' +
+  'Four options, one correct, three plausible but clearly wrong to someone paying attention. Keep the ' +
+  'question under 25 words.'
 
 /** What the model must return. Enforced by the API, not by a regex on prose. */
 const SCHEMA = {
   type: 'object',
   properties: {
-    grounded: {
-      type: 'boolean',
+    scope: {
+      type: 'string',
+      enum: ['place', 'category'],
       description:
-        'True only if the supplied facts contain something specific enough to build a question on. False if you would have to invent anything.',
+        '"place" if the question is about this exact spot, built from the supplied facts. "category" if it is about this kind of thing in general because no specific facts were supplied.',
     },
     sourceFact: {
       type: 'string',
       description:
-        'The exact fact from the supplied material that the correct answer comes from. Empty string when grounded is false.',
+        'The exact supplied fact the correct answer comes from. Empty string when scope is "category".',
     },
     question: { type: 'string' },
     options: { type: 'array', items: { type: 'string' } },
     correctIndex: { type: 'integer' },
   },
-  required: ['grounded', 'sourceFact', 'question', 'options', 'correctIndex'],
+  required: ['scope', 'sourceFact', 'question', 'options', 'correctIndex'],
   additionalProperties: false,
 } as const
 
@@ -116,89 +127,50 @@ async function groundingFor(l: Landmark): Promise<string> {
 }
 
 interface Result {
-  grounded: boolean
+  scope: 'place' | 'category'
   sourceFact: string
   question: string
   options: string[]
   correctIndex: number
 }
 
-async function viaOpenAI(prompt: string, name: string): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${OPENAI_KEY()}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: OPENAI_MODEL(),
-      max_tokens: 1000,
-      // Structured outputs: the API enforces the shape, so there is no prose to
-      // parse and no "reply with JSON only" plea in the prompt.
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'fun_fact', strict: true, schema: SCHEMA },
-      },
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: prompt },
-      ],
-    }),
+/** Separated from a skip on purpose: "the model had nothing to work with" and
+ *  "no provider answered" look identical in the output but mean opposite things
+ *  — one is the honesty rule working, the other is a broken run. */
+type Outcome =
+  | { kind: 'written'; fact: FunFact }
+  | { kind: 'skipped' }
+  | { kind: 'unavailable' }
+
+async function generate(l: Landmark, grounding: string): Promise<Outcome> {
+  const { data: out } = await askJSON<Result>({
+    system: SYSTEM,
+    text: `Here is everything known about this place:\n\n${grounding}`,
+    schema: SCHEMA,
+    maxTokens: 1000,
+    claudeModel: CLAUDE_MODEL(),
+    geminiModel: GEMINI_MODEL(),
+    timeoutMs: 30_000,
   })
-  if (!res.ok) {
-    console.warn(`  ! openai ${res.status} for "${name}"`)
-    return ''
-  }
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-  return body.choices?.[0]?.message?.content ?? ''
-}
+  if (!out) return { kind: 'unavailable' }
 
-async function viaAnthropic(prompt: string, name: string): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_KEY(),
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL(),
-      max_tokens: 1000,
-      output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-      system: SYSTEM,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
-  if (!res.ok) {
-    console.warn(`  ! anthropic ${res.status} for "${name}"`)
-    return ''
-  }
-  const body = (await res.json()) as { content?: { type: string; text?: string }[] }
-  return body.content?.find((c) => c.type === 'text')?.text ?? ''
-}
-
-async function generate(l: Landmark, grounding: string): Promise<FunFact | null> {
-  const prompt = `Here is everything known about this place:\n\n${grounding}`
-  const text = OPENAI_KEY() ? await viaOpenAI(prompt, l.name) : await viaAnthropic(prompt, l.name)
-  if (!text) return null
-
-  let out: Result
-  try {
-    out = JSON.parse(text) as Result
-  } catch {
-    return null
-  }
-
-  if (!out.grounded) return null
-  if (!out.question || !Array.isArray(out.options) || out.options.length < 3) return null
-  if (!out.options.every((o) => typeof o === 'string' && o.length > 0)) return null
+  if (!out.question || !Array.isArray(out.options) || out.options.length < 3) return { kind: 'skipped' }
+  if (!out.options.every((o) => typeof o === 'string' && o.length > 0)) return { kind: 'skipped' }
   const i = Number(out.correctIndex)
-  if (!Number.isInteger(i) || i < 0 || i >= out.options.length) return null
+  if (!Number.isInteger(i) || i < 0 || i >= out.options.length) return { kind: 'skipped' }
+  const scope = out.scope === 'place' ? 'place' : 'category'
 
-  return { question: out.question, options: out.options, correctIndex: i }
+  return {
+    kind: 'written',
+    fact: { question: out.question, options: out.options, correctIndex: i, scope },
+  }
 }
 
 async function main(): Promise<void> {
-  if (!OPENAI_KEY() && !ANTHROPIC_KEY()) {
+  const have = providers()
+  if (have.length === 0) {
     console.log(
-      '[funfacts] no OPENAI_API_KEY or ANTHROPIC_API_KEY — skipping (the app works fine without them)',
+      '[funfacts] no ANTHROPIC_API_KEY or GEMINI_API_KEY — skipping (the app works fine without them)',
     )
     process.exit(0)
   }
@@ -207,36 +179,55 @@ async function main(): Promise<void> {
   const limitArg = process.argv.indexOf('--limit')
   const limit = limitArg >= 0 ? Number(process.argv[limitArg + 1]) : Infinity
 
-  // Tier 3 first: there the question is the claim gate, not flavour, so if this
-  // run is interrupted the gated places are the ones already covered.
+  // Gated tiers first — there the question is the claim gate, not flavour, so an
+  // interrupted run leaves those covered. Then nearest the venue, because with
+  // 4000 landmarks and a rate limit you will not finish, and the ones within
+  // walking distance are the only ones anyone can reach today.
   const todo = allLandmarks()
     .filter((l) => !l.funFact)
     .filter((l) => !gatedOnly || l.tier >= CFG.triviaGateMinTier)
-    .sort((a, b) => b.tier - a.tier)
+    .sort(
+      (a, b) =>
+        b.tier - a.tier ||
+        haversineM(VENUE.lat, VENUE.lng, a.lat, a.lng) -
+          haversineM(VENUE.lat, VENUE.lng, b.lat, b.lng),
+    )
     .slice(0, Number.isFinite(limit) ? limit : undefined)
 
   const gated = todo.filter((l) => l.tier >= CFG.triviaGateMinTier).length
-  const model = OPENAI_KEY() ? OPENAI_MODEL() : ANTHROPIC_MODEL()
-  console.log(`[funfacts] ${todo.length} landmarks to try (${gated} gated) · model ${model}`)
+  const chain = have.map((p) => (p === 'claude' ? CLAUDE_MODEL() : GEMINI_MODEL())).join(' → ')
+  console.log(`[funfacts] ${todo.length} landmarks to try (${gated} gated) · ${chain}`)
 
-  let written = 0
+  let place = 0
+  let category = 0
   let skipped = 0
+  let unavailable = 0
   for (const l of todo) {
     const grounding = await groundingFor(l)
-    const f = await generate(l, grounding)
-    if (f) {
-      setFunFact(l.id, JSON.stringify(f))
-      written++
-      console.log(`  ✓ ${l.name} — ${f.question}`)
-    } else {
+    const out = await generate(l, grounding)
+    if (out.kind === 'written') {
+      setFunFact(l.id, JSON.stringify(out.fact))
+      if (out.fact.scope === 'place') place++
+      else category++
+      const mark = out.fact.scope === 'place' ? '✓' : '~'
+      console.log(`  ${mark} ${l.name} — ${out.fact.question}`)
+    } else if (out.kind === 'skipped') {
       skipped++
       console.log(`  · ${l.name} — nothing specific enough, left without a question`)
+    } else {
+      unavailable++
+      console.log(`  ! ${l.name} — no provider answered, not attempted`)
     }
-    await new Promise((r) => setTimeout(r, 250)) // gentle pacing
+    // Free tier is 20 requests/minute. Pace under it deliberately — the retry
+    // in llm.ts is a safety net, not a strategy, and a run that trips the limit
+    // on every call takes far longer than one that never trips it.
+    await new Promise((r) => setTimeout(r, PACE_MS))
   }
 
   console.log(
-    `[funfacts] ${written} written, ${skipped} skipped as too thin to ask about honestly`,
+    `[funfacts] ${place + category} written — ${place} about the place itself, ${category} about its kind` +
+      (skipped ? ` · ${skipped} malformed` : '') +
+      (unavailable ? ` · ${unavailable} not attempted (no provider answered)` : ''),
   )
   process.exit(0)
 }

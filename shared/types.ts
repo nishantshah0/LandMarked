@@ -112,9 +112,24 @@ export interface FeedEntry {
 export interface LeaderRow {
   handle: string
   avatarColor: string
+  /** places held right now */
   holding: number
+  /** every claim ever made, re-claims of the same place included */
   allTime: number
+  /** distinct places ever claimed — "visited" means somewhere new */
+  visited: number
   points: number
+}
+
+/** Two boards, because they reward opposite things: holding is a snapshot you
+ *  can lose while you sleep, visiting is a total nobody can take off you. */
+export interface Standings {
+  /** ranked by places held right now */
+  holding: LeaderRow[]
+  /** ranked by distinct places ever claimed */
+  visited: LeaderRow[]
+  /** how many people have ever claimed anything */
+  players: number
 }
 
 /** The aggregate portrait: what the neighbourhood looked like, measured. */
@@ -178,12 +193,12 @@ export type ServerMsg =
       t: 'init'
       landmarks: LandmarkPin[]
       feed: FeedEntry[]
-      leaders: LeaderRow[]
+      standings: Standings
       stats: DashStats
       now: number
     }
   | { t: 'claimed'; landmark: LandmarkPin; entry: FeedEntry }
-  | { t: 'tick'; leaders: LeaderRow[]; stats: DashStats; now: number }
+  | { t: 'tick'; standings: Standings; stats: DashStats; now: number }
   | { t: 'splat'; landmarkId: string; landmarkName: string; state: SplatState; splatUrl: string | null }
 
 export interface ClaimResponse {

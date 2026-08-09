@@ -2,27 +2,43 @@ services:
   - type: web
     name: seen
     runtime: docker
-    # Starter (~$7/mo, cancel after the event) because persistent disks aren't
-    # available on Render's free tier — and without the disk, every restart or
-    # redeploy wipes the archive, which is the whole product.
-    #
-    # Truly-free variant: change plan to "free" AND delete the disk block below.
-    # Accept that data resets on restart and the service sleeps after ~15 min
-    # idle (first visitor then waits ~1 min). Don't redeploy after real people
-    # have claimed.
+
+    # Starter (~$7/mo, cancellable after the event) because it is the cheapest
+    # plan with a persistent disk. Free has no disk, which would make the photo
+    # archive reset on every restart or spin-down — and a permanent archive is
+    # the entire premise of this project, not a nice-to-have.
     plan: starter
+
     healthCheckPath: /healthz
+
     envVars:
       - key: PORT
         value: 8787
-      # Optional: enables Claude vision verification. Without it, claims pass on
-      # GPS + duplicate-photo checks alone and are logged as unverified.
+      # tsx compiles TypeScript at runtime; cap the heap under the instance's
+      # 512 MB so a spike is a tidy GC rather than an OOM kill. Measured steady
+      # state is ~120 MB, so this is headroom, not a squeeze.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
+      # Optional: enables vision verification and question generation. Claude is
+      # tried first, Gemini behind it. With neither, claims still pass on the
+      # GPS + duplicate-photo checks and are logged as unverified.
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Optional: lets you register a finished 3D model over HTTP mid-event
-      # instead of shelling into the box. Any long random string.
+      - key: GEMINI_API_KEY
+        sync: false
+      # Only set these if your key lacks the default model.
+      - key: GEMINI_VISION_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_FUNFACT_MODEL
+        value: gemini-2.5-flash
+      # Optional: lets you attach a 3D model over HTTP mid-event instead of
+      # shelling into the box. Any long random string.
       - key: ADMIN_TOKEN
         sync: false
+
+    # The archive: sqlite, photographs, and 3D models. Landmarks do not depend
+    # on this — seed/landmarks.db is baked into the image and copied onto the
+    # disk on first boot — but every claim anyone makes does.
     disk:
       name: seen-data
       mountPath: /app/data

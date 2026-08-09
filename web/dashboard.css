@@ -370,3 +370,103 @@ body.dash {
     flex-direction: column;
   }
 }
+
+/* ---------------- live feed ---------------- */
+
+.feed {
+  list-style: none;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.feed li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  padding: 8px 0;
+  border-bottom: 1px dotted var(--line);
+}
+
+.feed li.none {
+  border: none;
+  opacity: 0.55;
+  font-size: 12.5px;
+}
+
+.feed .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.feed .fw {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feed time {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.5;
+  white-space: nowrap;
+}
+
+/* The newest row announces itself, then settles. */
+.feed li.fresh {
+  animation: land 0.9s ease;
+}
+
+@keyframes land {
+  0% {
+    background: rgba(229, 83, 61, 0.22);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+/* ---------------- heatmap ---------------- */
+
+.mapwrap {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#heatmap {
+  height: 340px;
+}
+
+.mapempty {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  font-size: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 13px;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.rank .rk {
+  width: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.4;
+  flex: none;
+}
+
+.rank .unit {
+  font-size: 10.5px;
+  font-weight: 500;
+  opacity: 0.5;
+}

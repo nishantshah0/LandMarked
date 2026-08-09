@@ -40,10 +40,10 @@ import {
   dashStats,
   feed,
   landmarks,
-  leaders,
   photos,
   photosByLandmark,
   pinOf,
+  standings,
   stateOf,
 } from './state'
 import {
@@ -596,7 +596,7 @@ const server = createServer((req, res) => {
     json(res, 200, {
       landmarks: allStates(now),
       feed: feed(),
-      leaders: leaders(now),
+      standings: standings(now),
       stats: dashStats(now, null),
       now,
     })
@@ -719,7 +719,7 @@ wss.on('connection', (ws) => {
       // map gets only what it draws — see LandmarkPin.
       landmarks: allPins(now),
       feed: feed(),
-      leaders: leaders(now),
+      standings: standings(now),
       stats: dashStats(now, null),
       now,
     } satisfies ServerMsg),
@@ -728,7 +728,7 @@ wss.on('connection', (ws) => {
 
 setInterval(() => {
   const now = Date.now()
-  broadcast({ t: 'tick', leaders: leaders(now), stats: dashStats(now, null), now })
+  broadcast({ t: 'tick', standings: standings(now), stats: dashStats(now, null), now })
 }, CFG.broadcastMs)
 
 process.on('uncaughtException', (e) => console.error('[seen] uncaught:', e))

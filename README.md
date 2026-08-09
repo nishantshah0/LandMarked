@@ -77,9 +77,17 @@ npm run dev            # map on :5173, server on :8787
 
 **Before the event:** set `VENUE` in `shared/config.ts` to the actual venue coordinates, delete `data/`, and reseed. The venue itself is a claimable tier-3 landmark with a generous indoor radius — that's the judge-demo moment.
 
-**Deploy:** the included `Dockerfile` and `render.yaml` deploy in a few minutes on Render's free tier. HTTPS is required — browsers only expose camera and precise geolocation on secure origins. Mount the disk at `/app/data` or the archive resets on redeploy.
+**Deploy:** the included `Dockerfile` and `render.yaml` stand it up on Render. HTTPS is required and automatic — browsers only expose camera and precise geolocation on secure origins.
 
-Keys live in `.env` (gitignored, kept out of the image by `.dockerignore`); see `.env.example` for what each one switches on. All are optional — `OPENAI_API_KEY` **or** `ANTHROPIC_API_KEY` enables vision verification and question generation (either provider works; OpenAI wins when both are set), and `ADMIN_TOKEN` enables registering a 3D model over HTTP. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
+The blueprint uses the **Starter** plan (~$7/mo, cancellable) because it is the cheapest plan with a **persistent disk**, mounted at `/app/data`. Free has no disk, so the photo archive would reset on every restart and spin-down — and a permanent archive is the whole premise here, not a nice-to-have.
+
+Landmarks are independent of that disk: `seed/landmarks.db` is committed and baked into the image, so first boot installs all 4,235 of them in seconds and never calls Overpass. Measured on a container capped at the instance's 512 MB — **healthy in 10 s, steady at ~120 MB**. Regenerate the snapshot with `npm run snapshot` after any reseed, and commit it.
+
+Deploying from a repo you don't own: Render's **"Public Git repository"** option takes the URL directly, needing no OAuth or collaborator rights. Blueprints need a connected provider, so set the service up in the UI instead — Docker runtime, health check `/healthz`, a 1 GB disk at `/app/data`, and the env vars listed in `render.yaml`.
+
+Deploying from a repo you don't own: Render's **"Public Git repository"** option takes the URL directly, needing no OAuth or collaborator rights. Blueprints need a connected provider, so set the service up in the UI instead — Docker runtime, health check `/healthz`, and the env vars listed in `render.yaml`.
+
+Keys live in `.env` (gitignored, kept out of the image by `.dockerignore`); see `.env.example` for what each one switches on. All are optional — `ANTHROPIC_API_KEY` enables vision verification and question generation, `GEMINI_API_KEY` is the fallback behind it, and `ADMIN_TOKEN` enables attaching a 3D model over HTTP. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
 
 ## Privacy
 

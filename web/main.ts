@@ -9,8 +9,10 @@ import type {
   ClaimResponse,
   LandmarkPin,
   LandmarkState,
+  LeaderRow,
   Photo,
   ServerMsg,
+  Standings,
   SplatResponse,
 } from '../shared/types'
 import { analyse, shrink } from './analyse'
@@ -473,7 +475,7 @@ async function openSheet(id: string): Promise<void> {
     </div>
     <div id="routeInfo" class="routeinfo"></div>
     ${l.gated ? `<p class="gate-flag">🔒 Iconic — answer its question to unlock the camera</p>` : ''}
-    ${funFactHtml(l.funFact)}
+    ${funFactHtml(l.funFact, l.category)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
     ${splatHtml(l)}
@@ -496,15 +498,28 @@ async function openSheet(id: string): Promise<void> {
 
 /* ---------------- fun fact (flavor on ordinary places) ---------------- */
 
-function funFactHtml(raw: string | null): string {
+function funFactHtml(raw: string | null, category: string): string {
   if (!raw) return ''
   try {
-    const f = JSON.parse(raw) as { question: string; options: string[]; correctIndex: number }
+    const f = JSON.parse(raw) as {
+      question: string
+      options: string[]
+      correctIndex: number
+      scope?: 'place' | 'category'
+    }
+    // A question about murals in general must not read as a fact about *this*
+    // mural. The summary line says which it is, before you open it.
+    const general = f.scope === 'category'
+    const label = general ? `💡 About ${category}s in general` : '💡 About this place'
+    const note = general
+      ? `A general question about ${category}s — the record for this one is just a name.`
+      : 'Built from this place&rsquo;s own record. AI-written, so treat it as flavour.'
     return (
-      `<details class="funfact" data-correct="${f.correctIndex}"><summary>💡 Fun fact quiz</summary>` +
+      `<details class="funfact${general ? ' general' : ''}" data-correct="${f.correctIndex}">` +
+      `<summary>${label}</summary>` +
       `<p class="ff-q">${f.question}</p>` +
       f.options.map((o, i) => `<button class="ff-opt" data-i="${i}">${o}</button>`).join('') +
-      `<p class="ff-note" hidden>AI-generated flavor, not verified history.</p></details>`
+      `<p class="ff-note" hidden>${note}</p></details>`
     )
   } catch {
     return ''
@@ -526,6 +541,90 @@ function wireFunFact(): void {
       if (note) note.hidden = false
     }
   })
+}
+
+/* ---------------- standings ---------------- */
+
+let standings: Standings | null = null
+let boardTab: 'holding' | 'visited' = 'holding'
+
+/** Your row, wherever it is. The whole point of a leaderboard for a player who
+ *  is not winning is being able to find themselves on it. */
+function boardHtml(): string {
+  if (!standings || standings.players === 0) {
+    return `<p class="none">Nobody has claimed anything yet. Take a place and you are rank 1.</p>`
+  }
+  const rows = boardTab === 'holding' ? standings.holding : standings.visited
+  const value = (l: LeaderRow): number => (boardTab === 'holding' ? l.holding : l.visited)
+  const unit = boardTab === 'holding' ? 'held' : 'places'
+  const me = getHandle()
+  const myIndex = me ? rows.findIndex((r) => r.handle === me) : -1
+
+  const row = (l: LeaderRow, i: number): string =>
+    `<li class="${l.handle === me ? 'me' : ''}"><span class="rk">${i + 1}</span>` +
+    `<i class="dot" style="background:${l.avatarColor}"></i>` +
+    `<span class="nm">${l.handle}</span><b>${value(l)}<span class="unit"> ${unit}</span></b></li>`
+
+  const top = rows.slice(0, 10).map(row).join('')
+  // Outside the top ten, pin your own row on the end rather than hiding it.
+  const mine =
+    myIndex >= 10
+      ? `<li class="gap">⋯</li>` + row(rows[myIndex], myIndex)
+      : myIndex < 0 && me
+        ? `<li class="none">You have not claimed anywhere yet.</li>`
+        : ''
+
+  return `<ol class="board">${top}${mine}</ol>`
+}
+
+/** Your standing, above the fold. Highlighting your row in the list is not
+ *  enough when you are eighth of eight — you would have to scroll to find out
+ *  where you are, which is the one thing you opened this to learn. */
+function myStandingHtml(): string {
+  const me = getHandle()
+  if (!me) return `<p class="boardme none">Pick a handle to appear on the board.</p>`
+  if (!standings || standings.players === 0) return ''
+  const rows = boardTab === 'holding' ? standings.holding : standings.visited
+  const i = rows.findIndex((r) => r.handle === me)
+  if (i < 0) {
+    return `<p class="boardme none">You are not on this board yet — claim somewhere to join it.</p>`
+  }
+  const row = rows[i]
+  const value = boardTab === 'holding' ? row.holding : row.visited
+  const unit = boardTab === 'holding' ? (value === 1 ? 'place held' : 'places held') : 'places visited'
+  return (
+    `<div class="boardme"><i class="dot" style="background:${row.avatarColor}"></i>` +
+    `<span>You are <b>#${i + 1}</b> of ${standings.players}</span>` +
+    `<b class="v">${value}<span class="unit"> ${unit}</span></b></div>`
+  )
+}
+
+function paintBoard(): void {
+  const panel = document.getElementById('boardBody')
+  if (!panel) return
+  panel.innerHTML =
+    `<div class="boardtabs">` +
+    `<button class="btab${boardTab === 'holding' ? ' on' : ''}" data-t="holding">Holding now</button>` +
+    `<button class="btab${boardTab === 'visited' ? ' on' : ''}" data-t="visited">Places visited</button>` +
+    `</div>` +
+    myStandingHtml() +
+    boardHtml() +
+    `<p class="boardnote">${
+      boardTab === 'holding'
+        ? 'Holds lapse after three hours. This board moves while you sleep.'
+        : 'Every place you have ever claimed, counted once. Nobody can take these back.'
+    }</p>`
+  panel.querySelectorAll<HTMLButtonElement>('.btab').forEach((b) => {
+    b.onclick = () => {
+      boardTab = b.dataset.t === 'visited' ? 'visited' : 'holding'
+      paintBoard()
+    }
+  })
+}
+
+function openBoard(): void {
+  $('board').removeAttribute('hidden')
+  paintBoard()
 }
 
 /* ---------------- the iconic-tier gate (§3.6) ---------------- */
@@ -837,6 +936,7 @@ function connect(): void {
       return
     }
     if (m.t === 'init') {
+      standings = m.standings
       setLandmarks(m.landmarks)
       refreshClusterSource()
       syncMarkers()
@@ -861,6 +961,8 @@ function connect(): void {
       }
     } else if (m.t === 'tick') {
       paintColourbar(m.stats.city.palette)
+      standings = m.standings
+      if (!$('board').hasAttribute('hidden')) paintBoard()
     } else if (m.t === 'splat') {
       const l = landmarks.find((x) => x.id === m.landmarkId)
       // The pin carries no splat fields — sheets read them from
@@ -878,6 +980,8 @@ function connect(): void {
 $('sheetClose').onclick = closeSheet
 $('meBtn').onclick = () => askHandle()
 $('cityBtn').onclick = toggleCity
+$('rankBtn').onclick = openBoard
+$('boardClose').onclick = () => $('board').setAttribute('hidden', '')
 map.on('click', closeSheet)
 paintHandle()
 watchMe()

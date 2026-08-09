@@ -1,9 +1,142 @@
-import { TIER_LABEL, type Tier } from '../shared/config'
+import type { FeatureCollection } from 'geojson'
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { TIER_LABEL, VENUE, type Tier } from '../shared/config'
 import { hex } from '../shared/palette'
-import type { DashStats, LeaderRow, ServerMsg } from '../shared/types'
+import type { DashStats, FeedEntry, LeaderRow, ServerMsg, Standings } from '../shared/types'
 import { REJECT_TEXT } from '../shared/types'
 
 const $ = (id: string): HTMLElement => document.getElementById(id)!
+
+const escapeHtml = (s: string): string =>
+  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+
+/* ---------------- the live feed ---------------- */
+
+/** Newest first, capped — this is a pulse, not an audit log. */
+const FEED_MAX = 24
+let feedRows: FeedEntry[] = []
+
+function ago(at: number): string {
+  const s = Math.max(0, Math.round((Date.now() - at) / 1000))
+  if (s < 10) return 'just now'
+  if (s < 60) return `${s}s ago`
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  return `${Math.floor(s / 3600)}h ago`
+}
+
+function paintFeed(): void {
+  if (feedRows.length === 0) {
+    $('feed').innerHTML =
+      '<li class="none">Nothing claimed yet. The first photograph starts the archive.</li>'
+    return
+  }
+  $('feed').innerHTML = feedRows
+    .map(
+      (e, i) =>
+        `<li class="${i === 0 ? 'fresh' : ''}">` +
+        `<i class="dot" style="background:${escapeHtml(e.avatarColor)}"></i>` +
+        `<span class="fw"><b>${escapeHtml(e.handle)}</b> claimed ${escapeHtml(e.landmarkName)}</span>` +
+        `<time datetime="${new Date(e.at).toISOString()}">${ago(e.at)}</time></li>`,
+    )
+    .join('')
+}
+
+function setFeed(list: FeedEntry[]): void {
+  feedRows = list.slice(0, FEED_MAX)
+  paintFeed()
+}
+
+function pushFeed(e: FeedEntry): void {
+  feedRows = [e, ...feedRows.filter((x) => x.photoId !== e.photoId)].slice(0, FEED_MAX)
+  paintFeed()
+}
+
+// Timestamps go stale on their own, so re-render the relative times even when
+// nothing new arrives.
+setInterval(() => {
+  if (feedRows.length) paintFeed()
+}, 15_000)
+
+/* ---------------- the geographic heatmap ---------------- */
+
+let heatMap: maplibregl.Map | null = null
+let heatReady = false
+
+function heatGeoJSON(heat: [number, number, number][]): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: heat.map(([lng, lat, n]) => ({
+      type: 'Feature',
+      properties: { n },
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+    })),
+  }
+}
+
+function initHeatmap(): void {
+  heatMap = new maplibregl.Map({
+    container: 'heatmap',
+    // Same near-grayscale basemap as the game, so the heat is the only colour.
+    style: 'https://tiles.openfreemap.org/styles/positron',
+    center: [VENUE.lng, VENUE.lat],
+    zoom: 11,
+    attributionControl: { compact: true },
+  })
+  heatMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
+
+  heatMap.on('load', () => {
+    heatMap!.addSource('heat', { type: 'geojson', data: heatGeoJSON([]) })
+    heatMap!.addLayer({
+      id: 'heat',
+      type: 'heatmap',
+      source: 'heat',
+      paint: {
+        // Weight by photographs held, so a much-visited place burns brighter.
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'n'], 0, 0.25, 12, 1],
+        'heatmap-intensity': 1.1,
+        'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 9, 18, 16, 46],
+        'heatmap-opacity': 0.85,
+        'heatmap-color': [
+          'interpolate',
+          ['linear'],
+          ['heatmap-density'],
+          0, 'rgba(0,0,0,0)',
+          0.2, 'rgba(47,125,148,0.55)',
+          0.45, 'rgba(197,138,30,0.75)',
+          0.75, 'rgba(229,83,61,0.9)',
+          1, 'rgb(229,83,61)',
+        ],
+      },
+    })
+    // A single claim should still be visible once you zoom past the blur.
+    heatMap!.addLayer({
+      id: 'heat-points',
+      type: 'circle',
+      source: 'heat',
+      minzoom: 13,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['get', 'n'], 1, 4, 12, 11],
+        'circle-color': '#e5533d',
+        'circle-opacity': 0.75,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#f7f5ef',
+      },
+    })
+    heatReady = true
+    if (lastHeat) applyHeat(lastHeat)
+  })
+}
+
+let lastHeat: [number, number, number][] | null = null
+
+function applyHeat(heat: [number, number, number][]): void {
+  lastHeat = heat
+  $('heatEmpty').toggleAttribute('hidden', heat.length > 0)
+  if (!heatReady || !heatMap) return
+  const src = heatMap.getSource('heat') as maplibregl.GeoJSONSource | undefined
+  src?.setData(heatGeoJSON(heat))
+}
 
 function setLive(on: boolean): void {
   $('live').classList.toggle('on', on)
@@ -33,7 +166,7 @@ function countUp(el: HTMLElement, to: number): void {
   step()
 }
 
-function render(stats: DashStats, leaders: LeaderRow[]): void {
+function render(stats: DashStats, standings: Standings): void {
   const city = stats.city
 
   $('cityPalette').innerHTML = city.palette.length
@@ -106,14 +239,19 @@ function render(stats: DashStats, leaders: LeaderRow[]): void {
     new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   $('sparkAxis').innerHTML = `<span>${fmt(t0 + start * bucketMs)}</span><span>now</span>`
 
-  $('leaders').innerHTML =
-    leaders
+  const board = (rows: LeaderRow[], metric: (l: LeaderRow) => number, unit: string): string =>
+    rows
+      .slice(0, 8)
       .map(
-        (l) =>
-          `<li><i class="dot" style="background:${l.avatarColor}"></i>${l.handle}` +
-          `<span class="sub2">${l.holding} held · ${l.allTime} all-time</span><b>${l.points}</b></li>`,
+        (l, i) =>
+          `<li><span class="rk">${i + 1}</span>` +
+          `<i class="dot" style="background:${escapeHtml(l.avatarColor)}"></i>${escapeHtml(l.handle)}` +
+          `<b>${metric(l)}<span class="unit"> ${unit}</span></b></li>`,
       )
       .join('') || '<li class="none">No one yet.</li>'
+
+  $('boardHolding').innerHTML = board(standings.holding, (l) => l.holding, 'held')
+  $('boardVisited').innerHTML = board(standings.visited, (l) => l.visited, 'places')
 
   $('contested').innerHTML =
     stats.mostContested.map((c) => `<li>${c.name}<b>${c.n}</b></li>`).join('') ||
@@ -143,7 +281,15 @@ function connect(): void {
       return
     }
     if (m.t === 'init' || m.t === 'tick') {
-      render(m.stats, m.leaders)
+      render(m.stats, m.standings)
+      applyHeat(m.stats.heat)
+      // Only init carries the backlog; ticks would otherwise wipe entries that
+      // arrived live since the last one.
+      if (m.t === 'init') setFeed(m.feed)
+      beat()
+    } else if (m.t === 'claimed') {
+      // The whole point of this page: a claim lands while judges are watching.
+      pushFeed(m.entry)
       beat()
     }
   }
@@ -153,4 +299,6 @@ function connect(): void {
   }
 }
 
+initHeatmap()
+paintFeed()
 connect()

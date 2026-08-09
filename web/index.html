@@ -26,6 +26,7 @@
       <div class="top-right">
         <button id="cityBtn" class="chip" title="see the neighbourhood as columns: height is how often a place has been photographed, colour is what it looks like">3D</button>
         <a class="chip" href="/dashboard.html">The colour</a>
+        <button id="rankBtn" class="chip">Standings</button>
         <button id="meBtn" class="chip">Who are you?</button>
       </div>
     </header>
@@ -40,6 +41,14 @@
       <button id="sheetClose" class="sheet-close" aria-label="close">×</button>
       <div class="sheet-grab"></div>
       <div id="sheetBody"></div>
+    </section>
+
+    <!-- standings -->
+    <section id="board" class="sheet" hidden>
+      <button id="boardClose" class="sheet-close" aria-label="close">×</button>
+      <div class="sheet-grab"></div>
+      <h2 class="boardtitle">Standings</h2>
+      <div id="boardBody"></div>
     </section>
 
     <!-- capture / result -->

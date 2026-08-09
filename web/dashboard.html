@@ -38,6 +38,25 @@
 
     <div class="two">
       <section class="card">
+        <h2>Right now</h2>
+        <p class="sub">every claim as it lands, newest first</p>
+        <ol id="feed" class="feed"></ol>
+      </section>
+
+      <section class="card">
+        <h2>Where people are claiming</h2>
+        <p class="sub">
+          one point per photographed place, weighted by how many photographs it holds
+        </p>
+        <div class="mapwrap">
+          <div id="heatmap"></div>
+          <p id="heatEmpty" class="mapempty">No claims yet — the map lights up as people go outside.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="two">
+      <section class="card">
         <h2>The day, hour by hour</h2>
         <p class="sub">each row is the blended colour of everything photographed in that hour</p>
         <div id="byHour" class="byhour"></div>
@@ -65,7 +84,11 @@
     <div class="two">
       <section class="card">
         <h2>Standings</h2>
-        <ol id="leaders" class="rank"></ol>
+        <p class="sub">holding is a snapshot you can lose; visited is a total nobody can take back</p>
+        <h3>Holding right now</h3>
+        <ol id="boardHolding" class="rank"></ol>
+        <h3>Places visited</h3>
+        <ol id="boardVisited" class="rank"></ol>
       </section>
       <section class="card">
         <h2>Most contested</h2>

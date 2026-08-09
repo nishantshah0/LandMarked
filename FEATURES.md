@@ -25,11 +25,11 @@ Everything here is shipped and verifiable on the live site.
 ## Verification (the transformation)
 - Server-recomputed GPS distance (client never trusted); accuracy gate with helpful errors
 - Perceptual-hash (dHash) dedup vs every photo ever accepted at that place — deterministic, explainable
-- AI plausibility check (OpenAI gpt-4o-mini, provider-swappable) with graceful degradation to deterministic checks
+- AI plausibility check — Claude first, Gemini behind it, and if both are unreachable the claim still stands on the two deterministic checks and is logged as unverified
 - Every attempt logged pass/fail with reason, distance, confidence
 
 ## Data (TECHNATION)
-- Public live dashboard: neighbourhood palette, the day hour-by-hour, verification pass rate + confidence by tier, refusal reasons, claims-over-time, standings, most contested, colour extremes
+- Public live dashboard: neighbourhood palette, **a live claim feed that lands new rows while you watch**, **a geographic heatmap of where people are actually going**, the day hour-by-hour, verification pass rate + confidence by tier, refusal reasons, claims-over-time, standings, most contested, colour extremes
 - Raw dataset public at /api/state
 - Honest empty states; nothing fabricated or hardcoded
 
