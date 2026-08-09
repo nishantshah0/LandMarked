@@ -45,10 +45,16 @@ let openId: string | null = null
 const map = new maplibregl.Map({
   container: 'map',
   // OpenFreeMap: genuinely free vector tiles, no key, no signup, no billing.
-  style: 'https://tiles.openfreemap.org/styles/liberty',
+  // Positron (near-grayscale) on purpose: the only colour on screen should be
+  // colour that came out of people's photographs.
+  style: 'https://tiles.openfreemap.org/styles/positron',
   center: [VENUE.lng, VENUE.lat],
   zoom: 15.2,
   attributionControl: { compact: true },
+})
+map.once('error', () => {
+  // if positron ever disappears, fall back to the default style rather than a blank map
+  map.setStyle('https://tiles.openfreemap.org/styles/liberty')
 })
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 // debug handle; harmless in production
