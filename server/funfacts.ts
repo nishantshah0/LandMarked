@@ -3,6 +3,8 @@
 //   npm run funfacts -- --gated   only the trivia-gated ones (tier 3)
 //   npm run funfacts -- --limit 50
 //
+// Runs on either provider: OpenAI if OPENAI_API_KEY is set, otherwise Anthropic.
+//
 // The whole design here is about specificity without invention. A question like
 // "what are murals usually made of?" is filler — it could be asked at any of the
 // 300 pins. But a *specific* question about an obscure mural is worse: there is
@@ -19,21 +21,34 @@
 // is too thin. A skipped landmark simply has no quiz — and because the gate
 // fails open, a skipped tier-3 landmark is claimable without one.
 
+import './env' // must stay first — see server/env.ts
 import { CFG } from '../shared/config'
-import { env, loadEnv } from '../shared/env'
 import type { Landmark } from '../shared/types'
 import { allLandmarks, setFunFact } from './db'
 
-loadEnv()
-
-const KEY = (): string => env('ANTHROPIC_API_KEY')
-const MODEL = (): string => env('FUNFACT_MODEL') || 'claude-opus-5'
+const ANTHROPIC_KEY = (): string => process.env.ANTHROPIC_API_KEY ?? ''
+const OPENAI_KEY = (): string => process.env.OPENAI_API_KEY ?? ''
+const ANTHROPIC_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
+const OPENAI_MODEL = (): string => process.env.OPENAI_FUNFACT_MODEL ?? 'gpt-4o-mini'
 
 interface FunFact {
   question: string
   options: string[]
   correctIndex: number
 }
+
+const SYSTEM =
+  'You write one multiple-choice question about a specific real place, for a city-exploration game. ' +
+  'The question must be about THIS place in particular — its own history, its maker, its materials, ' +
+  'its dates, what its inscription says, what it commemorates. A question that would read the same at ' +
+  'any other park, mural or memorial is a failure.\n\n' +
+  'Build the question only from the supplied facts. You may use well-known outside knowledge about ' +
+  'famous landmarks, but never invent a specific claim about an obscure one.\n\n' +
+  'If the supplied facts contain nothing specific enough — just a name and a generic category — set ' +
+  'grounded to false and leave the other fields empty. Returning nothing is correct and expected for ' +
+  'roughly half of these places; a plausible-sounding invented fact is the worst possible answer.\n\n' +
+  'When grounded: four options, one correct, three plausible but clearly wrong to someone standing ' +
+  'there. Put the exact supplying fact in sourceFact.'
 
 /** What the model must return. Enforced by the API, not by a regex on prose. */
 const SCHEMA = {
@@ -108,48 +123,62 @@ interface Result {
   correctIndex: number
 }
 
-async function generate(l: Landmark, grounding: string): Promise<FunFact | null> {
+async function viaOpenAI(prompt: string, name: string): Promise<string> {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${OPENAI_KEY()}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: OPENAI_MODEL(),
+      max_tokens: 1000,
+      // Structured outputs: the API enforces the shape, so there is no prose to
+      // parse and no "reply with JSON only" plea in the prompt.
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'fun_fact', strict: true, schema: SCHEMA },
+      },
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: prompt },
+      ],
+    }),
+  })
+  if (!res.ok) {
+    console.warn(`  ! openai ${res.status} for "${name}"`)
+    return ''
+  }
+  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+  return body.choices?.[0]?.message?.content ?? ''
+}
+
+async function viaAnthropic(prompt: string, name: string): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': KEY(),
+      'x-api-key': ANTHROPIC_KEY(),
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: MODEL(),
+      model: ANTHROPIC_MODEL(),
       max_tokens: 1000,
-      // Structured outputs: the API enforces the shape, so there is no prose to
-      // parse and no "reply with JSON only" plea in the prompt.
       output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-      system:
-        'You write one multiple-choice question about a specific real place, for a city-exploration game. ' +
-        'The question must be about THIS place in particular — its own history, its maker, its materials, ' +
-        'its dates, what its inscription says, what it commemorates. A question that would read the same at ' +
-        'any other park, mural or memorial is a failure.\n\n' +
-        'Build the question only from the supplied facts. You may use well-known outside knowledge about ' +
-        'famous landmarks, but never invent a specific claim about an obscure one.\n\n' +
-        'If the supplied facts contain nothing specific enough — just a name and a generic category — set ' +
-        'grounded to false and leave the other fields empty. Returning nothing is correct and expected for ' +
-        'roughly half of these places; a plausible-sounding invented fact is the worst possible answer.\n\n' +
-        'When grounded: four options, one correct, three plausible but clearly wrong to someone standing ' +
-        'there. Put the exact supplying fact in sourceFact.',
-      messages: [
-        {
-          role: 'user',
-          content: `Here is everything known about this place:\n\n${grounding}`,
-        },
-      ],
+      system: SYSTEM,
+      messages: [{ role: 'user', content: prompt }],
     }),
   })
-
   if (!res.ok) {
-    console.warn(`  ! ${res.status} for "${l.name}"`)
-    return null
+    console.warn(`  ! anthropic ${res.status} for "${name}"`)
+    return ''
   }
-
   const body = (await res.json()) as { content?: { type: string; text?: string }[] }
-  const text = body.content?.find((c) => c.type === 'text')?.text ?? ''
+  return body.content?.find((c) => c.type === 'text')?.text ?? ''
+}
+
+async function generate(l: Landmark, grounding: string): Promise<FunFact | null> {
+  const prompt = `Here is everything known about this place:\n\n${grounding}`
+  const text = OPENAI_KEY() ? await viaOpenAI(prompt, l.name) : await viaAnthropic(prompt, l.name)
+  if (!text) return null
+
   let out: Result
   try {
     out = JSON.parse(text) as Result
@@ -167,8 +196,10 @@ async function generate(l: Landmark, grounding: string): Promise<FunFact | null>
 }
 
 async function main(): Promise<void> {
-  if (!KEY()) {
-    console.log('[funfacts] ANTHROPIC_API_KEY not set — skipping (the app works fine without them)')
+  if (!OPENAI_KEY() && !ANTHROPIC_KEY()) {
+    console.log(
+      '[funfacts] no OPENAI_API_KEY or ANTHROPIC_API_KEY — skipping (the app works fine without them)',
+    )
     process.exit(0)
   }
 
@@ -185,9 +216,8 @@ async function main(): Promise<void> {
     .slice(0, Number.isFinite(limit) ? limit : undefined)
 
   const gated = todo.filter((l) => l.tier >= CFG.triviaGateMinTier).length
-  console.log(
-    `[funfacts] ${todo.length} landmarks to try (${gated} gated) · model ${MODEL()}`,
-  )
+  const model = OPENAI_KEY() ? OPENAI_MODEL() : ANTHROPIC_MODEL()
+  console.log(`[funfacts] ${todo.length} landmarks to try (${gated} gated) · model ${model}`)
 
   let written = 0
   let skipped = 0

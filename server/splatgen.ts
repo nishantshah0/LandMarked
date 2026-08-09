@@ -19,19 +19,20 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CFG } from '../shared/config'
-import { env } from '../shared/env'
 import type { Landmark, SplatState } from '../shared/types'
-import { setSplat } from './db'
+import { DATA_DIR, setSplat } from './db'
 import { makeZip } from './zip'
 
-const PHOTO_DIR = 'data/photos'
-export const SPLAT_DIR = 'data/splats'
+// Follows DATA_DIR so the labeled specimen instance keeps its own models rather
+// than writing into the real archive.
+const PHOTO_DIR = join(DATA_DIR, 'photos')
+export const SPLAT_DIR = join(DATA_DIR, 'splats')
 
 /** Formats Spark can render. Anything else we refuse rather than half-load. */
 export const SPLAT_EXTS = ['.ply', '.spz', '.splat', '.ksplat', '.sog']
 
 export function providerConfigured(): boolean {
-  return env('SPLAT_API_URL').length > 0
+  return (process.env.SPLAT_API_URL ?? '').length > 0
 }
 
 /** Every photograph of a place, as one zip — the reconstruction input. */
@@ -111,7 +112,7 @@ interface CreateResponse {
 }
 
 async function poll(id: string, key: string): Promise<string | null> {
-  const base = env('SPLAT_STATUS_URL') || env('SPLAT_API_URL')
+  const base = (process.env.SPLAT_STATUS_URL ?? '') || (process.env.SPLAT_API_URL ?? '')
   const deadline = Date.now() + 20 * 60_000 // reconstruction is minutes, not seconds
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 15_000))
@@ -140,8 +141,8 @@ export async function generateSplat(
   photos: { id: string; takenAt: number }[],
   onDone: (state: SplatState, url: string | null) => void,
 ): Promise<void> {
-  const key = env('SPLAT_API_KEY')
-  const api = env('SPLAT_API_URL')
+  const key = process.env.SPLAT_API_KEY ?? ''
+  const api = process.env.SPLAT_API_URL ?? ''
   try {
     const zip = bundlePhotos(photos)
     const form = new FormData()

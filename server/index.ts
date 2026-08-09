@@ -1,10 +1,11 @@
+import './env' // must stay first — see server/env.ts
+import './specimen' // must run before ./state loads the db (no-op unless SEEN_SPECIMEN=1)
 import { existsSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, normalize as normPath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { WebSocketServer, WebSocket } from 'ws'
 import { CFG, TIER_POINTS, VENUE, VENUE_TRIVIA } from '../shared/config'
-import { env, loadEnv } from '../shared/env'
 import { dHash, hamming, haversineM } from '../shared/geo'
 // (route proxy uses haversineM for its fallback)
 import { hex } from '../shared/palette'
@@ -20,6 +21,7 @@ import type {
 import { REJECT_TEXT } from '../shared/types'
 import {
   closeDb,
+  DATA_DIR,
   insertClaim,
   insertPhoto,
   logAttempt,
@@ -50,8 +52,6 @@ import {
 } from './splatgen'
 import { verifyPhoto, visionEnabled } from './vision'
 
-loadEnv()
-
 // The venue's gate is load-bearing for the live demo, and a database seeded
 // before the gate existed has no question on it. Backfill it here rather than
 // requiring a reseed, so an existing deploy upgrades by restarting.
@@ -63,7 +63,13 @@ if (venueLandmark && !venueLandmark.funFact) {
 }
 
 const PORT = Number(process.env.PORT || 8787)
-const PHOTO_DIR = 'data/photos'
+const PHOTO_DIR = join(DATA_DIR, 'photos')
+
+// SPECIMEN MODE: a separate, self-labeling instance for showing the populated
+// vision. Every page gets a banner injected server-side and synthetic photos
+// render as palette cards stamped SPECIMEN — it cannot pass as real usage,
+// by construction. The real instance never runs with this flag.
+const SPECIMEN = process.env.SEEN_SPECIMEN === '1'
 
 console.log(
   `[seen] ${landmarks.length} landmarks · ${photos.length} photographs · vision ${
@@ -141,6 +147,14 @@ interface ClaimBody {
 }
 
 async function handleClaim(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (SPECIMEN) {
+    json(res, 403, {
+      ok: false,
+      reason: 'no_photo',
+      message: 'This is the specimen instance — claims happen on the real site',
+    })
+    return
+  }
   let body: ClaimBody
   try {
     body = JSON.parse(await readBody(req, CFG.maxPhotoBytes + 200_000)) as ClaimBody
@@ -502,7 +516,7 @@ const server = createServer((req, res) => {
   if (url.startsWith('/api/landmark/') && url.endsWith('/splat') && req.method === 'POST') {
     const id = decodeURIComponent(url.slice('/api/landmark/'.length, -'/splat'.length))
     const l = byId.get(id)
-    const token = env('ADMIN_TOKEN')
+    const token = process.env.ADMIN_TOKEN ?? ''
     if (!token || req.headers['x-admin-token'] !== token) {
       json(res, 403, { error: 'ADMIN_TOKEN not set, or wrong token' })
       return
@@ -580,6 +594,27 @@ const server = createServer((req, res) => {
 
   if (url.startsWith('/photos/')) {
     const name = url.slice('/photos/'.length).replace(/[^a-z0-9.]/gi, '')
+    // Specimen "photos" are palette cards stamped SPECIMEN — self-disclosing.
+    if (SPECIMEN && name.startsWith('spec')) {
+      const id = name.replace(/\.jpg$/, '')
+      const p = photos.find((x) => x.id === id)
+      const pal = p && p.palette.length ? p.palette : [[140, 140, 140] as [number, number, number]]
+      const stripes = pal
+        .map(
+          (c, i) =>
+            `<rect x="0" y="${(i * 400) / pal.length}" width="400" height="${400 / pal.length + 1}" fill="rgb(${c
+              .map(Math.round)
+              .join(',')})"/>`,
+        )
+        .join('')
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">${stripes}` +
+        `<rect x="0" y="168" width="400" height="64" fill="rgba(20,20,20,0.72)"/>` +
+        `<text x="200" y="210" text-anchor="middle" font-family="system-ui,sans-serif" font-size="42" font-weight="700" letter-spacing="8" fill="#ffd76a">SPECIMEN</text></svg>`
+      res.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'no-store' })
+      res.end(svg)
+      return
+    }
     const file = join(PHOTO_DIR, name)
     if (existsSync(file) && statSync(file).isFile()) {
       res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=31536000' })
@@ -623,6 +658,18 @@ const server = createServer((req, res) => {
   if (!file.startsWith(normPath(DIST)) || !existsSync(file) || !statSync(file).isFile()) {
     res.writeHead(404)
     res.end('not found')
+    return
+  }
+  if (SPECIMEN && extname(file) === '.html') {
+    // Banner baked into every page render — the instance labels itself.
+    const banner =
+      `<div style="position:fixed;left:0;right:0;bottom:0;z-index:2147483647;text-align:center;` +
+      `background:repeating-linear-gradient(45deg,#ffd76a 0 14px,#141414 14px 28px);padding:5px">` +
+      `<span style="display:inline-block;background:#141414;color:#ffd76a;font:700 12px/1.6 system-ui,sans-serif;` +
+      `letter-spacing:.1em;padding:5px 16px;border-radius:999px">SPECIMEN MODE — ILLUSTRATIVE DATA, NOT REAL USAGE</span></div>`
+    const html = readFileSync(file, 'utf8').replace('</body>', banner + '</body>')
+    res.writeHead(200, { 'content-type': MIME['.html'] })
+    res.end(html)
     return
   }
   res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' })

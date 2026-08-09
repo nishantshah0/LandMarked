@@ -13,11 +13,9 @@
 
 import { writeFileSync } from 'node:fs'
 import { CFG } from '../shared/config'
-import { loadEnv } from '../shared/env'
+import './env' // must stay first — see server/env.ts
 import { allLandmarks, allPhotos } from './db'
 import { SPLAT_EXTS, bundlePhotos, registerSplat } from './splatgen'
-
-loadEnv()
 
 function photosFor(id: string): { id: string; takenAt: number }[] {
   return allPhotos().filter((p) => p.landmarkId === id)

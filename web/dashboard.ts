@@ -38,10 +38,10 @@ function render(stats: DashStats, leaders: LeaderRow[]): void {
 
   $('cityPalette').innerHTML = city.palette.length
     ? city.palette.map((c) => `<i style="background:${hex(c)}"><span>${hex(c)}</span></i>`).join('')
-    : '<p class="none">No photographs yet.</p>'
+    : '<p class="none">The archive opens today. The first photograph decides the first colour.</p>'
   $('cityReading').textContent = city.photos
     ? `${city.reading} — blended from ${city.photos} photograph${city.photos === 1 ? '' : 's'}`
-    : 'Nothing seen yet.'
+    : 'Nothing has been seen yet.'
 
   countUp($('cPhotos'), stats.photos)
   countUp($('cClaims'), stats.totalClaims)
