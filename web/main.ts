@@ -23,15 +23,40 @@ const $ = (id: string): HTMLElement => document.getElementById(id)!
 function getHandle(): string | null {
   return localStorage.getItem('seen_handle')
 }
-function askHandle(): string | null {
-  const cur = getHandle() ?? ''
-  const v = prompt('Pick a handle — this is how you appear on the map. No account, no email.', cur)
-  if (v && v.trim().length >= 2) {
-    localStorage.setItem('seen_handle', v.trim().slice(0, 24))
-    paintHandle()
-    return getHandle()
-  }
-  return getHandle()
+// A styled replacement for window.prompt(). A native OS dialog is the one
+// thing on screen that cannot be art-directed — every other surface in this
+// app is drawn, and a grey system box breaking that mid-flow is the most
+// visible "default" moment a stranger could hit. Reuses the same #modal
+// element the claim verdicts already use, so it is one modal system, not two.
+function askHandle(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const cur = getHandle() ?? ''
+    showModal(`
+      <div class="verdict handle-modal">
+        <h2>Who are you?</h2>
+        <p>Pick a handle — this is how you appear on the map. No account, no email.</p>
+        <input id="handleInput" class="handle-input" type="text" maxlength="24"
+               placeholder="e.g. maya" value="${cur.replace(/"/g, '&quot;')}" autocomplete="off" />
+        <button class="claim" id="handleSave">Save</button>
+      </div>`)
+    const input = document.getElementById('handleInput') as HTMLInputElement
+    const save = document.getElementById('handleSave') as HTMLButtonElement
+    input.focus()
+    input.select()
+    const commit = (): void => {
+      const v = input.value.trim()
+      if (v.length >= 2) {
+        localStorage.setItem('seen_handle', v.slice(0, 24))
+        paintHandle()
+      }
+      $('modal').setAttribute('hidden', '')
+      resolve(getHandle())
+    }
+    save.onclick = commit
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') commit()
+    }
+  })
 }
 function paintHandle(): void {
   $('meBtn').textContent = getHandle() ?? 'You'
@@ -524,11 +549,13 @@ async function openSheet(id: string): Promise<void> {
 
   const btn = document.getElementById('claimBtn') as HTMLButtonElement
   btn.onclick = () => {
-    if (!getHandle() && !askHandle()) return
-    pendingAnswer = null
-    const camera = (): void => ($('camera') as HTMLInputElement).click()
-    if (l.gated) openGate(l, camera)
-    else camera()
+    void (async () => {
+      if (!getHandle() && !(await askHandle())) return
+      pendingAnswer = null
+      const camera = (): void => ($('camera') as HTMLInputElement).click()
+      if (l.gated) openGate(l, camera)
+      else camera()
+    })()
   }
   const dir = document.getElementById('dirBtn')
   if (dir) dir.onclick = () => void showRoute(l.id)
