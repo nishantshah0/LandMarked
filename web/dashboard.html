@@ -11,10 +11,13 @@
   <body class="dash">
     <header class="dhead">
       <div>
-        <h1>The colour of the neighbourhood</h1>
+        <h1>Two ways to measure a neighbourhood</h1>
         <p>
-          Measured from every photograph anyone has taken here. Nothing on this page is estimated or
-          entered by hand — it is arithmetic over real pixels, recomputed as each photo arrives.
+          <b>What the record says it is</b> — 4,235 real places from OpenStreetMap, and how much each
+          one can actually tell us about itself. <b>And what people's cameras say it looks like</b> —
+          every photograph anyone takes here, blended into one live colour. Nothing below is
+          estimated or entered by hand: it is arithmetic over real tags and real pixels, recomputed
+          as each photo arrives.
         </p>
       </div>
       <div class="right">
@@ -22,19 +25,6 @@
         <span id="live" class="livechip"><i></i><span id="liveLabel">connecting</span></span>
       </div>
     </header>
-
-    <section class="hero">
-      <div id="cityPalette" class="citypalette"></div>
-      <p id="cityReading" class="reading">—</p>
-    </section>
-
-    <section class="counters">
-      <div class="counter"><i>photographs</i><b id="cPhotos">—</b></div>
-      <div class="counter"><i>claims</i><b id="cClaims">—</b></div>
-      <div class="counter"><i>held right now</i><b id="cActive">—</b></div>
-      <div class="counter"><i>people</i><b id="cPlayers">—</b></div>
-      <div class="counter"><i>places</i><b id="cPlaces">—</b></div>
-    </section>
 
     <section class="card wide">
       <h2>What this neighbourhood is made of</h2>
@@ -68,6 +58,24 @@
           <div id="corpusQ" class="bars"></div>
         </div>
       </div>
+    </section>
+
+    <section class="card wide" style="background:none;border:none;padding:0;margin-bottom:6px">
+      <h2>And what its cameras say it looks like</h2>
+      <p class="sub">blended from every photograph in the archive — pixel arithmetic, no model</p>
+    </section>
+
+    <section class="hero">
+      <div id="cityPalette" class="citypalette"></div>
+      <p id="cityReading" class="reading">—</p>
+    </section>
+
+    <section class="counters">
+      <div class="counter"><i>photographs</i><b id="cPhotos">—</b></div>
+      <div class="counter"><i>claims</i><b id="cClaims">—</b></div>
+      <div class="counter"><i>held right now</i><b id="cActive">—</b></div>
+      <div class="counter"><i>people</i><b id="cPlayers">—</b></div>
+      <div class="counter"><i>places</i><b id="cPlaces">—</b></div>
     </section>
 
     <div class="two">
