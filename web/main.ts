@@ -278,10 +278,16 @@ function setLandmarks(list: LandmarkPin[]): void {
 
 /* ---------------- the city in three dimensions ---------------- */
 //
-// Every place is a column. Unphotographed places are low grey stubs — the city
-// as it stands. Each photograph raises its column and pulls it toward the
-// colour of what was actually photographed there. So the skyline *is* the
-// dataset: height is attention, colour is what the place looks like.
+// The real city, extruded from OpenStreetMap's own building heights, and the
+// dataset standing on top of it. Each photograph raises a place's column and
+// pulls it toward the colour of what was actually photographed there, so a
+// well-photographed place visibly out-tops the block it sits on.
+//
+// The city fabric used to be drawn as a 10m grey stub per landmark, which meant
+// that before anyone had photographed anything every column was identical and
+// the view read as scattered grey slabs rather than a city. The basemap already
+// ships true heights (median 39m downtown, 553m at the CN Tower) — using them
+// costs one layer and makes the columns legible by contrast.
 
 let cityOn = false
 
@@ -313,19 +319,51 @@ interface CityData {
 function cityGeoJSON(): CityData {
   return {
     type: 'FeatureCollection',
-    features: landmarks.map((l) => ({
-      type: 'Feature',
-      properties: {
-        height: 10 + l.photoCount * 34,
-        colour: l.tint ? hex(l.tint) : '#b9b6ae',
-        name: l.name,
-      },
-      geometry: {
-        type: 'Polygon',
-        coordinates: squareAround(l.lng, l.lat, l.tier >= 2 ? 26 : 17),
-      },
-    })),
+    // Only photographed places get a column. An unphotographed place is already
+    // on the map as a pin, and giving it a stub here just buried the real signal
+    // in identical grey boxes.
+    features: landmarks
+      .filter((l) => l.photoCount > 0)
+      .map((l) => ({
+        type: 'Feature',
+        properties: {
+          // Starts above the downtown median so the first photograph clears the
+          // rooftops around it, rather than vanishing into the block.
+          height: 45 + l.photoCount * 40,
+          colour: l.tint ? hex(l.tint) : '#b9b6ae',
+          name: l.name,
+        },
+        geometry: {
+          type: 'Polygon',
+          coordinates: squareAround(l.lng, l.lat, l.tier >= 2 ? 26 : 17),
+        },
+      })),
   }
+}
+
+/** The basemap's own building polygons, extruded to their true heights. Drawn
+ *  under the data columns so the coloured ones stay readable. */
+function addBuildings(beforeId?: string): void {
+  if (map.getLayer('buildings-3d')) return
+  map.addLayer(
+    {
+      id: 'buildings-3d',
+      type: 'fill-extrusion',
+      source: 'openmaptiles',
+      'source-layer': 'building',
+      minzoom: 14,
+      paint: {
+        'fill-extrusion-color': '#dcd9d2',
+        // A handful of features carry no height, and two carry 0 — fall back to
+        // a low-rise default so they are not flattened into the ground.
+        'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8],
+        'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
+        'fill-extrusion-opacity': 0.92,
+        'fill-extrusion-vertical-gradient': true,
+      },
+    } as unknown as Parameters<typeof map.addLayer>[0],
+    beforeId,
+  )
 }
 
 function refreshCity(): void {
@@ -342,6 +380,7 @@ function toggleCity(): void {
 
   if (cityOn) {
     if (!map.getSource('city')) {
+      addBuildings()
       map.addSource('city', {
         type: 'geojson',
         data: cityGeoJSON(),
@@ -358,9 +397,14 @@ function toggleCity(): void {
         },
       })
     } else {
+      addBuildings('city')
+      map.setLayoutProperty('buildings-3d', 'visibility', 'visible')
       map.setLayoutProperty('city', 'visibility', 'visible')
       refreshCity()
     }
+    // The basemap's flat footprints would otherwise z-fight with the extrusions
+    // standing on them.
+    if (map.getLayer('building')) map.setLayoutProperty('building', 'visibility', 'none')
     // Applied instantly, not eased: a geolocation fix arriving mid-flight
     // cancels an in-progress easeTo and leaves the map flat.
     map.setPitch(55)
@@ -368,6 +412,8 @@ function toggleCity(): void {
     if (map.getZoom() < 15.4) map.setZoom(15.4)
   } else {
     if (map.getLayer('city')) map.setLayoutProperty('city', 'visibility', 'none')
+    if (map.getLayer('buildings-3d')) map.setLayoutProperty('buildings-3d', 'visibility', 'none')
+    if (map.getLayer('building')) map.setLayoutProperty('building', 'visibility', 'visible')
     map.setPitch(0)
     map.setBearing(0)
   }
