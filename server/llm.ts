@@ -35,6 +35,17 @@ export interface JsonAsk {
   timeoutMs?: number
 }
 
+/** A 429 that told us how long to wait. Worth distinguishing: everything else
+ *  should fall through to the next provider immediately, but a rate limit is
+ *  temporary and the same provider will answer if we simply wait. */
+class RateLimited extends Error {
+  constructor(readonly seconds: number) {
+    super(`rate limited, retry in ${seconds}s`)
+  }
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
+
 /** Models drift about how they wrap JSON. Take the object whatever they do. */
 function parseJson<T>(raw: string): T | null {
   if (!raw) return null
@@ -154,6 +165,16 @@ async function viaGemini(ask: JsonAsk): Promise<string> {
         }),
       },
     )
+    if (res.status === 429) {
+      // Free tier is 20 requests/minute and the response says exactly how long
+      // to wait. Honour it rather than hammering.
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: { details?: { '@type'?: string; retryDelay?: string }[] }
+      }
+      const info = body.error?.details?.find((d) => d['@type']?.includes('RetryInfo'))
+      const secs = Number(/(\d+)/.exec(info?.retryDelay ?? '')?.[1] ?? 30)
+      throw new RateLimited(secs)
+    }
     if (!res.ok) throw new Error(`gemini ${res.status}`)
     const body = (await res.json()) as {
       candidates?: { content?: { parts?: { text?: string }[] } }[]
@@ -172,12 +193,22 @@ export async function askJSON<T>(ask: JsonAsk): Promise<{ data: T | null; provid
   if (KEY_GEMINI()) attempts.push(['gemini', () => viaGemini(ask)])
 
   for (const [provider, run] of attempts) {
-    try {
-      const data = parseJson<T>(await run())
-      if (data) return { data, provider }
-      console.warn(`[llm] ${provider} returned nothing parseable`)
-    } catch (e) {
-      console.warn(`[llm] ${provider} failed: ${(e as Error).message}`)
+    // Two attempts per provider, because a rate limit is a "wait", not a "no".
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const data = parseJson<T>(await run())
+        if (data) return { data, provider }
+        console.warn(`[llm] ${provider} returned nothing parseable`)
+        break
+      } catch (e) {
+        if (e instanceof RateLimited && attempt === 0) {
+          console.warn(`[llm] ${provider} rate limited — waiting ${e.seconds}s`)
+          await sleep((e.seconds + 1) * 1000)
+          continue
+        }
+        console.warn(`[llm] ${provider} failed: ${(e as Error).message}`)
+        break
+      }
     }
   }
   return { data: null, provider: null }

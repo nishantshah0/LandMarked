@@ -5,24 +5,24 @@
 //
 // Runs on Claude, falling back to Gemini if Claude is unavailable or fails.
 //
-// The whole design here is about specificity without invention. A question like
-// "what are murals usually made of?" is filler — it could be asked at any of the
-// 300 pins. But a *specific* question about an obscure mural is worse: there is
-// nothing to base it on, so the model would make one up, and a wrong "fun fact"
-// attached to a real place is the one output this project cannot ship.
+// Every landmark gets a question — engagement is the point — but not every
+// landmark deserves the same KIND of question, and that distinction is the whole
+// design.
 //
-// So the question is grounded rather than guessed. Two sources, both real:
-//   1. the OSM tags kept verbatim at seed time (inscription, artist, dates,
-//      material, architect, heritage status — see FACT_TAGS in seed.ts);
-//   2. for landmarks carrying a `wikipedia` tag, the article's opening extract.
+// Where real material exists (a Wikipedia extract, an inscription, an artist, a
+// date, a material), the question is about that exact spot, built from facts
+// kept verbatim at seed time. Where the record is just a name and a category —
+// about a quarter of them — asking something specific would mean inventing it,
+// and a fabricated "fun fact" pinned to a real place is the one output this
+// project must never ship. Those get an honest question about the category
+// instead: how murals get commissioned, why memorials face the way they do.
 //
-// The model is given that grounding, told to build the question from it, and
-// told to return grounded:false rather than invent anything when the grounding
-// is too thin. A skipped landmark simply has no quiz — and because the gate
-// fails open, a skipped tier-3 landmark is claimable without one.
+// The scope travels with the question so the UI can label a general one as
+// general. Nothing ever poses as local knowledge it does not have.
 
 import './env' // must stay first — see server/env.ts
-import { CFG } from '../shared/config'
+import { CFG, VENUE } from '../shared/config'
+import { haversineM } from '../shared/geo'
 import type { Landmark } from '../shared/types'
 import { allLandmarks, setFunFact } from './db'
 import { askJSON, providers } from './llm'
@@ -30,46 +30,56 @@ import { askJSON, providers } from './llm'
 const CLAUDE_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
 const GEMINI_MODEL = (): string => process.env.GEMINI_FUNFACT_MODEL ?? 'gemini-2.5-flash'
 
+/** Gemini's free tier allows 20 requests/minute; 3.2s between calls sits just
+ *  under it. Override with FUNFACT_PACE_MS on a paid key. */
+const PACE_MS = Number(process.env.FUNFACT_PACE_MS ?? 3200)
+
 interface FunFact {
   question: string
   options: string[]
   correctIndex: number
+  /** 'place' = about this exact spot; 'category' = about this kind of thing.
+   *  Surfaced in the UI so a general question never poses as a local fact. */
+  scope: 'place' | 'category'
 }
 
 const SYSTEM =
-  'You write one multiple-choice question about a specific real place, for a city-exploration game. ' +
-  'The question must be about THIS place in particular — its own history, its maker, its materials, ' +
-  'its dates, what its inscription says, what it commemorates. A question that would read the same at ' +
-  'any other park, mural or memorial is a failure.\n\n' +
-  'Build the question only from the supplied facts. You may use well-known outside knowledge about ' +
-  'famous landmarks, but never invent a specific claim about an obscure one.\n\n' +
-  'A Wikipedia extract, an inscription, an artist, a date, a height or a material is ample grounding — ' +
-  'when any of those is supplied, set grounded to true and build the question from it.\n\n' +
-  'Set grounded to false only when the facts really are just a name and a generic category, with no ' +
-  'specific detail to ask about. That is common and returning nothing is the right answer there; a ' +
-  'plausible-sounding invented fact is the worst possible outcome.\n\n' +
-  'When grounded: four options, one correct, three plausible but clearly wrong to someone standing ' +
-  'there. Put the exact supplying fact in sourceFact.'
+  'You write one short, surprising multiple-choice question for a city-exploration game, to be read ' +
+  'by someone standing at the place. Every place gets a question. Choose its scope honestly.\n\n' +
+  'scope "place" — use this whenever the supplied facts contain anything specific: a Wikipedia ' +
+  'extract, an inscription, an artist, a date, a height, a material, an architect. Build the question ' +
+  'from that material and put the exact supplying fact in sourceFact. Prefer this scope; it is the ' +
+  'more interesting question.\n\n' +
+  'scope "category" — use this only when the facts really are just a name and a generic category. ' +
+  'Then ask something genuinely true and interesting about that KIND of thing: how murals get ' +
+  'commissioned, why war memorials face east, what a "parkette" legally is, why fountains were ' +
+  'originally built. Teach the player something real about the category. Leave sourceFact empty.\n\n' +
+  'The one unbreakable rule: never invent a specific claim about this exact spot. If you do not know ' +
+  'who painted this mural or what year it went up, do not guess — ask a category question instead. A ' +
+  'plausible-sounding fabrication attached to a real place is the worst possible output.\n\n' +
+  'Four options, one correct, three plausible but clearly wrong to someone paying attention. Keep the ' +
+  'question under 25 words.'
 
 /** What the model must return. Enforced by the API, not by a regex on prose. */
 const SCHEMA = {
   type: 'object',
   properties: {
-    grounded: {
-      type: 'boolean',
+    scope: {
+      type: 'string',
+      enum: ['place', 'category'],
       description:
-        'True only if the supplied facts contain something specific enough to build a question on. False if you would have to invent anything.',
+        '"place" if the question is about this exact spot, built from the supplied facts. "category" if it is about this kind of thing in general because no specific facts were supplied.',
     },
     sourceFact: {
       type: 'string',
       description:
-        'The exact fact from the supplied material that the correct answer comes from. Empty string when grounded is false.',
+        'The exact supplied fact the correct answer comes from. Empty string when scope is "category".',
     },
     question: { type: 'string' },
     options: { type: 'array', items: { type: 'string' } },
     correctIndex: { type: 'integer' },
   },
-  required: ['grounded', 'sourceFact', 'question', 'options', 'correctIndex'],
+  required: ['scope', 'sourceFact', 'question', 'options', 'correctIndex'],
   additionalProperties: false,
 } as const
 
@@ -117,7 +127,7 @@ async function groundingFor(l: Landmark): Promise<string> {
 }
 
 interface Result {
-  grounded: boolean
+  scope: 'place' | 'category'
   sourceFact: string
   question: string
   options: string[]
@@ -144,13 +154,16 @@ async function generate(l: Landmark, grounding: string): Promise<Outcome> {
   })
   if (!out) return { kind: 'unavailable' }
 
-  if (!out.grounded) return { kind: 'skipped' }
   if (!out.question || !Array.isArray(out.options) || out.options.length < 3) return { kind: 'skipped' }
   if (!out.options.every((o) => typeof o === 'string' && o.length > 0)) return { kind: 'skipped' }
   const i = Number(out.correctIndex)
   if (!Number.isInteger(i) || i < 0 || i >= out.options.length) return { kind: 'skipped' }
+  const scope = out.scope === 'place' ? 'place' : 'category'
 
-  return { kind: 'written', fact: { question: out.question, options: out.options, correctIndex: i } }
+  return {
+    kind: 'written',
+    fact: { question: out.question, options: out.options, correctIndex: i, scope },
+  }
 }
 
 async function main(): Promise<void> {
@@ -166,19 +179,27 @@ async function main(): Promise<void> {
   const limitArg = process.argv.indexOf('--limit')
   const limit = limitArg >= 0 ? Number(process.argv[limitArg + 1]) : Infinity
 
-  // Tier 3 first: there the question is the claim gate, not flavour, so if this
-  // run is interrupted the gated places are the ones already covered.
+  // Gated tiers first — there the question is the claim gate, not flavour, so an
+  // interrupted run leaves those covered. Then nearest the venue, because with
+  // 4000 landmarks and a rate limit you will not finish, and the ones within
+  // walking distance are the only ones anyone can reach today.
   const todo = allLandmarks()
     .filter((l) => !l.funFact)
     .filter((l) => !gatedOnly || l.tier >= CFG.triviaGateMinTier)
-    .sort((a, b) => b.tier - a.tier)
+    .sort(
+      (a, b) =>
+        b.tier - a.tier ||
+        haversineM(VENUE.lat, VENUE.lng, a.lat, a.lng) -
+          haversineM(VENUE.lat, VENUE.lng, b.lat, b.lng),
+    )
     .slice(0, Number.isFinite(limit) ? limit : undefined)
 
   const gated = todo.filter((l) => l.tier >= CFG.triviaGateMinTier).length
   const chain = have.map((p) => (p === 'claude' ? CLAUDE_MODEL() : GEMINI_MODEL())).join(' → ')
   console.log(`[funfacts] ${todo.length} landmarks to try (${gated} gated) · ${chain}`)
 
-  let written = 0
+  let place = 0
+  let category = 0
   let skipped = 0
   let unavailable = 0
   for (const l of todo) {
@@ -186,8 +207,10 @@ async function main(): Promise<void> {
     const out = await generate(l, grounding)
     if (out.kind === 'written') {
       setFunFact(l.id, JSON.stringify(out.fact))
-      written++
-      console.log(`  ✓ ${l.name} — ${out.fact.question}`)
+      if (out.fact.scope === 'place') place++
+      else category++
+      const mark = out.fact.scope === 'place' ? '✓' : '~'
+      console.log(`  ${mark} ${l.name} — ${out.fact.question}`)
     } else if (out.kind === 'skipped') {
       skipped++
       console.log(`  · ${l.name} — nothing specific enough, left without a question`)
@@ -195,11 +218,15 @@ async function main(): Promise<void> {
       unavailable++
       console.log(`  ! ${l.name} — no provider answered, not attempted`)
     }
-    await new Promise((r) => setTimeout(r, 250)) // gentle pacing
+    // Free tier is 20 requests/minute. Pace under it deliberately — the retry
+    // in llm.ts is a safety net, not a strategy, and a run that trips the limit
+    // on every call takes far longer than one that never trips it.
+    await new Promise((r) => setTimeout(r, PACE_MS))
   }
 
   console.log(
-    `[funfacts] ${written} written · ${skipped} skipped as too thin to ask about honestly` +
+    `[funfacts] ${place + category} written — ${place} about the place itself, ${category} about its kind` +
+      (skipped ? ` · ${skipped} malformed` : '') +
       (unavailable ? ` · ${unavailable} not attempted (no provider answered)` : ''),
   )
   process.exit(0)

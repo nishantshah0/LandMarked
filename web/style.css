@@ -868,3 +868,9 @@ body {
   opacity: 0.4;
   pointer-events: none;
 }
+
+/* A general question is visibly a different kind of thing from a local one. */
+.funfact.general {
+  border-style: dashed;
+  opacity: 0.9;
+}

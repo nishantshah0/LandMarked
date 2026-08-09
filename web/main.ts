@@ -376,7 +376,7 @@ async function openSheet(id: string): Promise<void> {
     </div>
     <div id="routeInfo" class="routeinfo"></div>
     ${l.gated ? `<p class="gate-flag">🔒 Iconic — answer its question to unlock the camera</p>` : ''}
-    ${funFactHtml(l.funFact)}
+    ${funFactHtml(l.funFact, l.category)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
     ${splatHtml(l)}
@@ -399,15 +399,28 @@ async function openSheet(id: string): Promise<void> {
 
 /* ---------------- fun fact (flavor on ordinary places) ---------------- */
 
-function funFactHtml(raw: string | null): string {
+function funFactHtml(raw: string | null, category: string): string {
   if (!raw) return ''
   try {
-    const f = JSON.parse(raw) as { question: string; options: string[]; correctIndex: number }
+    const f = JSON.parse(raw) as {
+      question: string
+      options: string[]
+      correctIndex: number
+      scope?: 'place' | 'category'
+    }
+    // A question about murals in general must not read as a fact about *this*
+    // mural. The summary line says which it is, before you open it.
+    const general = f.scope === 'category'
+    const label = general ? `💡 About ${category}s in general` : '💡 About this place'
+    const note = general
+      ? `A general question about ${category}s — the record for this one is just a name.`
+      : 'Built from this place&rsquo;s own record. AI-written, so treat it as flavour.'
     return (
-      `<details class="funfact" data-correct="${f.correctIndex}"><summary>💡 Fun fact quiz</summary>` +
+      `<details class="funfact${general ? ' general' : ''}" data-correct="${f.correctIndex}">` +
+      `<summary>${label}</summary>` +
       `<p class="ff-q">${f.question}</p>` +
       f.options.map((o, i) => `<button class="ff-opt" data-i="${i}">${o}</button>`).join('') +
-      `<p class="ff-note" hidden>AI-generated flavor, not verified history.</p></details>`
+      `<p class="ff-note" hidden>${note}</p></details>`
     )
   } catch {
     return ''
