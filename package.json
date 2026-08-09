@@ -8,6 +8,7 @@
     "build": "vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "seed": "tsx server/seed.ts",
+    "specimen": "SEEN_SPECIMEN=1 SEEN_DATA_DIR=data-specimen PORT=8788 tsx server/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

@@ -1,11 +1,15 @@
 import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { Tier } from '../shared/config'
 import type { Claim, Landmark, Photo, RejectReason } from '../shared/types'
 
-mkdirSync('data/photos', { recursive: true })
+/** Overridable so the labeled specimen instance keeps its own separate data. */
+export const DATA_DIR = process.env.SEEN_DATA_DIR ?? 'data'
 
-const DB_PATH = 'data/seen.db'
+mkdirSync(join(DATA_DIR, 'photos'), { recursive: true })
+
+const DB_PATH = join(DATA_DIR, 'seen.db')
 let db = new DatabaseSync(DB_PATH)
 
 db.exec(`
