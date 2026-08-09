@@ -1363,6 +1363,13 @@ body {
 .brand {
   flex: 0 0 auto;
   line-height: 1.05;
+  /* "LandMarked" is ten characters where "SEEN" was four. Uppercased at 0.3em
+     tracking it measured ~190px and pushed the chip row off a 430px phone, so
+     the wordmark keeps its own capitalisation and tighter spacing — which also
+     reads as a name rather than a shout. */
+  text-transform: none;
+  letter-spacing: 0.04em;
+  font-size: 20px;
 }
 
 .brand em {
