@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90" width="90" height="90">
+  <!-- Tier 2/3, including the venue itself — the judge-demo pin. Same aperture
+       family, heavier ring and a filled iris so it carries at a glance and
+       still reads as one of the set rather than a different product. -->
+  <circle cx="45" cy="45" r="32" fill="#F7F5EF"/>
+  <circle cx="45" cy="45" r="32" fill="none" stroke="#17181C" stroke-width="8"/>
+  <circle cx="45" cy="45" r="15" fill="#E5533D"/>
+  <g stroke="#17181C" stroke-width="5.5" stroke-linecap="round">
+    <path d="M45 13 v9"/><path d="M77 45 h-9"/><path d="M45 77 v-9"/><path d="M13 45 h9"/>
+    <path d="M67.6 22.4 l-6.4 6.4"/><path d="M67.6 67.6 l-6.4-6.4"/>
+    <path d="M22.4 67.6 l6.4-6.4"/><path d="M22.4 22.4 l6.4 6.4"/>
+  </g>
+</svg>
