@@ -1126,6 +1126,28 @@ body {
     animation: none;
     clip-path: circle(0% at 50% 50%);
   }
+
+  /* The unclaimed pins breathe on an infinite loop, and at map zoom there are
+     dozens on screen at once — that is the single most uncomfortable thing
+     here for anyone with vestibular sensitivity. They still read as
+     unclaimed: the dashed border and the + glyph carry that on their own,
+     the pulse was only ever reinforcement. */
+  .pin.free {
+    animation: none;
+  }
+
+  /* Decorative motion off; nothing here communicates state. */
+  .sheet {
+    animation: none;
+  }
+
+  .pin,
+  .shot {
+    transition: none;
+  }
+
+  /* The spinner deliberately keeps moving — it is the only thing telling you
+     the app is still working, and freezing it would read as a hang. */
 }
 
 /* ============================================================
