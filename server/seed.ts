@@ -153,9 +153,6 @@ async function main(): Promise<void> {
       osmFacts: factsOf(el.tags ?? {}),
       photoCount: 0,
       funFact: null,
-      splatUrl: null,
-      splatState: 'none',
-      splatPhotos: 0,
     })
   }
 
@@ -185,13 +182,13 @@ async function main(): Promise<void> {
     lng: VENUE.lng,
     tier: 3,
     category: 'venue',
-    description: 'The hackathon itself. Claimable from inside the building.',
+    description:
+      'The hackathon itself, held indoors at Stackt Market. Photos from inside — ' +
+      'the room, tables, screens, people working, shipping-container walls — are ' +
+      'exactly what belongs here.',
     osmFacts: null,
     photoCount: 0,
     funFact: JSON.stringify(VENUE_TRIVIA),
-    splatUrl: null,
-    splatState: 'none',
-    splatPhotos: 0,
   })
 
   insertLandmarks(near)

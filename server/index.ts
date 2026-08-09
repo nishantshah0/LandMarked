@@ -16,7 +16,6 @@ import type {
   PhotoAnalysis,
   RejectReason,
   ServerMsg,
-  SplatResponse,
 } from '../shared/types'
 import { REJECT_TEXT } from '../shared/types'
 import {
@@ -27,7 +26,6 @@ import {
   logAttempt,
   photoHashesFor,
   setFunFact,
-  setSplat,
 } from './db'
 import {
   addClaim,
@@ -45,13 +43,6 @@ import {
   standings,
   stateOf,
 } from './state'
-import {
-  SPLAT_DIR,
-  bundlePhotos,
-  generateSplat,
-  providerConfigured,
-  registerSplat,
-} from './splatgen'
 import { verifyPhoto, visionEnabled, visionProvider } from './vision'
 
 // The venue's gate is load-bearing for the live demo, and a database seeded
@@ -76,7 +67,7 @@ const SPECIMEN = process.env.SEEN_SPECIMEN === '1'
 console.log(
   `[seen] ${landmarks.length} landmarks · ${photos.length} photographs · vision ${
     visionEnabled() ? `on via ${visionProvider()}` : 'off (deterministic checks only)'
-  } · 3D generator ${providerConfigured() ? 'configured' : 'manual (npm run splat)'}`,
+  }`,
 )
 
 /* ---------------- helpers ---------------- */
@@ -443,132 +434,6 @@ const server = createServer((req, res) => {
     return
   }
 
-  // The reconstruction input: every photograph of one place, as one zip.
-  // This is the honest "crowd photos become a 3D model" pipeline — download it
-  // and it goes straight into any photogrammetry tool.
-  if (url.startsWith('/api/landmark/') && url.endsWith('/photos.zip')) {
-    const id = decodeURIComponent(url.slice('/api/landmark/'.length, -'/photos.zip'.length))
-    const l = byId.get(id)
-    if (!l) {
-      json(res, 404, { error: 'unknown place' })
-      return
-    }
-    const shots = photosByLandmark.get(id) ?? []
-    if (shots.length === 0) {
-      json(res, 404, { error: 'no photographs here yet' })
-      return
-    }
-    const zip = bundlePhotos(shots)
-    res.writeHead(200, {
-      'content-type': 'application/zip',
-      'content-length': zip.length,
-      'content-disposition': `attachment; filename="${id.replace(/[^a-z0-9]/gi, '')}-photos.zip"`,
-    })
-    res.end(zip)
-    return
-  }
-
-  // Kick off reconstruction. Returns immediately — the model takes minutes, so
-  // completion arrives over the socket instead of on this response.
-  if (url.startsWith('/api/landmark/') && url.endsWith('/generate-splat') && req.method === 'POST') {
-    const id = decodeURIComponent(url.slice('/api/landmark/'.length, -'/generate-splat'.length))
-    const l = byId.get(id)
-    if (!l) {
-      json(res, 404, { error: 'unknown place' })
-      return
-    }
-    const shots = photosByLandmark.get(id) ?? []
-    const reply = (ok: boolean, state: typeof l.splatState, message: string): void =>
-      json(res, 200, { ok, state, splatUrl: l.splatUrl, message } satisfies SplatResponse)
-
-    if (l.splatState === 'pending') return reply(true, 'pending', 'Already reconstructing — hang on.')
-    if (shots.length < CFG.splatMinPhotos) {
-      return reply(
-        false,
-        l.splatState,
-        `Needs ${CFG.splatMinPhotos - shots.length} more photograph${
-          CFG.splatMinPhotos - shots.length === 1 ? '' : 's'
-        } from different angles before this can be solved.`,
-      )
-    }
-    if (!providerConfigured()) {
-      return reply(
-        false,
-        l.splatState,
-        'No generator is configured. Download the photo bundle, run it through Luma / Polycam / Postshot, then register the result.',
-      )
-    }
-
-    l.splatState = 'pending'
-    setSplat(l.id, 'pending', l.splatUrl, shots.length)
-    reply(true, 'pending', `Reconstructing ${l.name} from ${shots.length} photographs…`)
-    broadcast({ t: 'splat', landmarkId: l.id, landmarkName: l.name, state: 'pending', splatUrl: null })
-
-    void generateSplat(l, shots, (state, splatUrl) => {
-      l.splatState = state
-      l.splatUrl = splatUrl
-      l.splatPhotos = shots.length
-      broadcast({ t: 'splat', landmarkId: l.id, landmarkName: l.name, state, splatUrl })
-    })
-    return
-  }
-
-  // Register a model built elsewhere. Token-guarded so it can be done from a
-  // phone mid-event; without ADMIN_TOKEN set it is simply off.
-  if (url.startsWith('/api/landmark/') && url.endsWith('/splat') && req.method === 'POST') {
-    const id = decodeURIComponent(url.slice('/api/landmark/'.length, -'/splat'.length))
-    const l = byId.get(id)
-    const token = process.env.ADMIN_TOKEN ?? ''
-    if (!token || req.headers['x-admin-token'] !== token) {
-      json(res, 403, { error: 'ADMIN_TOKEN not set, or wrong token' })
-      return
-    }
-    if (!l) {
-      json(res, 404, { error: 'unknown place' })
-      return
-    }
-    void readBody(req, 8_000)
-      .then(async (raw) => {
-        const { url: modelUrl } = JSON.parse(raw) as { url?: string }
-        if (!modelUrl) {
-          json(res, 400, { error: 'body needs {"url": "https://..."}' })
-          return
-        }
-        // Remote URLs only. registerSplat also accepts a filesystem path — that
-        // is the CLI's job, where the caller already has a shell. Allowing it
-        // here would let a token-holder copy any local file into a publicly
-        // served directory, which is not a power this endpoint needs.
-        if (!/^https?:\/\//i.test(modelUrl)) {
-          json(res, 400, {
-            error: 'url must be http(s) — to register a local file use: npm run splat -- <id> <path>',
-          })
-          return
-        }
-        const shots = photosByLandmark.get(id) ?? []
-        const out = await registerSplat(id, modelUrl, shots.length)
-        if (out.ok) {
-          l.splatState = 'ready'
-          l.splatUrl = out.url
-          l.splatPhotos = shots.length
-          broadcast({
-            t: 'splat',
-            landmarkId: l.id,
-            landmarkName: l.name,
-            state: 'ready',
-            splatUrl: out.url,
-          })
-        }
-        json(res, out.ok ? 200 : 400, {
-          ok: out.ok,
-          state: out.ok ? 'ready' : l.splatState,
-          splatUrl: out.url,
-          message: out.message,
-        } satisfies SplatResponse)
-      })
-      .catch(() => json(res, 400, { error: 'bad body' }))
-    return
-  }
-
   if (url === '/api/state') {
     json(res, 200, {
       landmarks: allStates(now),
@@ -628,23 +493,6 @@ const server = createServer((req, res) => {
     return
   }
 
-  // Finished 3D models. Same sanitising as photos — the name is scrubbed to
-  // [a-z0-9.] before it is ever joined onto a path.
-  if (url.startsWith('/splats/')) {
-    const name = url.slice('/splats/'.length).replace(/[^a-z0-9.]/gi, '')
-    const file = join(SPLAT_DIR, name)
-    if (existsSync(file) && statSync(file).isFile()) {
-      res.writeHead(200, {
-        'content-type': 'application/octet-stream',
-        'cache-control': 'public, max-age=31536000',
-      })
-      res.end(readFileSync(file))
-    } else {
-      res.writeHead(404)
-      res.end('not found')
-    }
-    return
-  }
 
   if (!existsSync(DIST)) {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' })
@@ -655,7 +503,6 @@ const server = createServer((req, res) => {
   let path = url
   if (path === '/') path = '/index.html'
   if (path === '/dashboard') path = '/dashboard.html'
-  if (path === '/splat') path = '/splat.html'
   const file = normPath(join(DIST, path))
   if (!file.startsWith(normPath(DIST)) || !existsSync(file) || !statSync(file).isFile()) {
     res.writeHead(404)

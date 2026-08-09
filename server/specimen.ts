@@ -70,9 +70,6 @@ function copyLandmarksFromReal(): void {
     // landmarks are copied for their names and positions only, so questions and
     // reconstructions stay a property of the real archive.
     osmFacts: null,
-    splatUrl: null,
-    splatState: 'none',
-    splatPhotos: 0,
   }))
   insertLandmarks(lms)
   console.log(`[specimen] copied ${lms.length} landmarks from the real instance`)

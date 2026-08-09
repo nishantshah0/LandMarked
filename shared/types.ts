@@ -1,9 +1,6 @@
 import type { Tier } from './config'
 import type { PhotoAnalysis } from './palette'
 
-/** How far along a landmark's crowd-photo 3D reconstruction is. */
-export type SplatState = 'none' | 'pending' | 'ready' | 'failed'
-
 export interface Landmark {
   id: string
   name: string
@@ -18,14 +15,6 @@ export interface Landmark {
   photoCount: number
   /** JSON {question, options, correctIndex} — batch-generated, or null */
   funFact: string | null
-  /** Where this place's 3D reconstruction lives. Two shapes, deliberately:
-   *  a local `/splats/x.ply` we serve and render in our own viewer, or an
-   *  `https://` embed URL (a Luma capture) shown inline in an iframe. The
-   *  renderer branches on the scheme — see splatHtml() in web/main.ts. */
-  splatUrl: string | null
-  splatState: SplatState
-  /** how many photographs the current model was reconstructed from */
-  splatPhotos: number
 }
 
 /** The half of a question a gated client is allowed to see. */
@@ -77,8 +66,6 @@ export interface LandmarkState extends Omit<Landmark, 'funFact'> {
   trivia: TriviaPublic | null
   /** whether the camera is locked behind that question */
   gated: boolean
-  /** photographs still needed before this place can be reconstructed */
-  splatNeeds: number
 }
 
 /** What one pin needs to be drawn, and nothing else.
@@ -199,7 +186,6 @@ export type ServerMsg =
     }
   | { t: 'claimed'; landmark: LandmarkPin; entry: FeedEntry }
   | { t: 'tick'; standings: Standings; stats: DashStats; now: number }
-  | { t: 'splat'; landmarkId: string; landmarkName: string; state: SplatState; splatUrl: string | null }
 
 export interface ClaimResponse {
   ok: boolean
@@ -221,11 +207,5 @@ export interface ArchiveResponse {
   photos: Photo[]
 }
 
-export interface SplatResponse {
-  ok: boolean
-  state: SplatState
-  splatUrl: string | null
-  message: string
-}
 
 export type { PhotoAnalysis }

@@ -79,7 +79,6 @@ export function stateOf(l: Landmark, now: number): LandmarkState {
     funFact: gated ? null : l.funFact,
     trivia: gated && trivia ? publicTrivia(trivia) : null,
     gated,
-    splatNeeds: Math.max(0, CFG.splatMinPhotos - l.photoCount),
   }
 }
 

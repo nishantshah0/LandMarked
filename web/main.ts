@@ -13,7 +13,6 @@ import type {
   Photo,
   ServerMsg,
   Standings,
-  SplatResponse,
 } from '../shared/types'
 import { analyse, shrink } from './analyse'
 
@@ -252,6 +251,103 @@ function setLandmarks(list: LandmarkPin[]): void {
   for (const l of list) byId.set(l.id, l)
 }
 
+/* ---------------- the city in three dimensions ---------------- */
+//
+// Every place is a column. Unphotographed places are low grey stubs — the city
+// as it stands. Each photograph raises its column and pulls it toward the
+// colour of what was actually photographed there. So the skyline *is* the
+// dataset: height is attention, colour is what the place looks like.
+
+let cityOn = false
+
+function squareAround(lng: number, lat: number, m: number): [number, number][][] {
+  const dLat = m / 111_320
+  const dLng = m / (111_320 * Math.cos((lat * Math.PI) / 180))
+  return [
+    [
+      [lng - dLng, lat - dLat],
+      [lng + dLng, lat - dLat],
+      [lng + dLng, lat + dLat],
+      [lng - dLng, lat + dLat],
+      [lng - dLng, lat - dLat],
+    ],
+  ]
+}
+
+interface CityFeature {
+  type: 'Feature'
+  properties: { height: number; colour: string; name: string }
+  geometry: { type: 'Polygon'; coordinates: [number, number][][] }
+}
+
+interface CityData {
+  type: 'FeatureCollection'
+  features: CityFeature[]
+}
+
+function cityGeoJSON(): CityData {
+  return {
+    type: 'FeatureCollection',
+    features: landmarks.map((l) => ({
+      type: 'Feature',
+      properties: {
+        height: 10 + l.photoCount * 34,
+        colour: l.tint ? hex(l.tint) : '#b9b6ae',
+        name: l.name,
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: squareAround(l.lng, l.lat, l.tier >= 2 ? 26 : 17),
+      },
+    })),
+  }
+}
+
+function refreshCity(): void {
+  if (!mapReady) return
+  const src = map.getSource('city') as maplibregl.GeoJSONSource | undefined
+  if (src) src.setData(cityGeoJSON() as unknown as Parameters<typeof src.setData>[0])
+}
+
+function toggleCity(): void {
+  if (!mapReady) return
+  cityOn = !cityOn
+  const btn = document.getElementById('cityBtn')
+  if (btn) btn.classList.toggle('on', cityOn)
+
+  if (cityOn) {
+    if (!map.getSource('city')) {
+      map.addSource('city', {
+        type: 'geojson',
+        data: cityGeoJSON(),
+      } as unknown as Parameters<typeof map.addSource>[1])
+      map.addLayer({
+        id: 'city',
+        type: 'fill-extrusion',
+        source: 'city',
+        paint: {
+          'fill-extrusion-color': ['get', 'colour'],
+          'fill-extrusion-height': ['get', 'height'],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.92,
+        },
+      })
+    } else {
+      map.setLayoutProperty('city', 'visibility', 'visible')
+      refreshCity()
+    }
+    // Applied instantly, not eased: a geolocation fix arriving mid-flight
+    // cancels an in-progress easeTo and leaves the map flat.
+    map.setPitch(55)
+    map.setBearing(-20)
+    if (map.getZoom() < 15.4) map.setZoom(15.4)
+  } else {
+    if (map.getLayer('city')) map.setLayoutProperty('city', 'visibility', 'none')
+    map.setPitch(0)
+    map.setBearing(0)
+  }
+}
+
 /* ---------------- geolocation ---------------- */
 
 function watchMe(): void {
@@ -407,10 +503,8 @@ async function openSheet(id: string): Promise<void> {
     ${funFactHtml(l.funFact, l.category)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
-    ${splatHtml(l)}
   `
   wireFunFact()
-  wireSplat(l)
 
   const btn = document.getElementById('claimBtn') as HTMLButtonElement
   btn.onclick = () => {
@@ -630,75 +724,6 @@ function openGate(l: LandmarkState, onPass: () => void): void {
   })
 }
 
-/* ---------------- the place in 3D (§3.9) ---------------- */
-
-function splatHtml(l: LandmarkState): string {
-  if (l.splatState === 'ready' && l.splatUrl) {
-    // Two capture paths land in the same field, so render on its shape. A
-    // remote URL is somebody's hosted capture (Luma) and embeds inline; a
-    // local path is a model we hold and serve, opened in our own viewer.
-    const hosted = /^https?:\/\//i.test(l.splatUrl)
-    if (hosted) {
-      return (
-        `<h3 class="archive-h">Walk around it — 3D, built from photographs</h3>` +
-        `<iframe class="splat-frame" src="${l.splatUrl}" loading="lazy" allow="fullscreen" title="3D model of ${l.name}"></iframe>`
-      )
-    }
-    return (
-      `<div class="splat ready">` +
-      `<b>This place exists in 3D.</b>` +
-      `<span>Reconstructed from ${l.splatPhotos} of its photographs.</span>` +
-      `<a class="claim" href="/splat.html?id=${encodeURIComponent(l.id)}">Walk around it →</a>` +
-      `</div>`
-    )
-  }
-  if (l.photoCount === 0) return ''
-  if (l.splatState === 'pending') {
-    return `<div class="splat"><b>Rebuilding this place in 3D…</b><span>Takes a few minutes. It will appear here.</span></div>`
-  }
-  if (l.splatNeeds > 0) {
-    const pct = Math.round(((l.photoCount || 0) / (l.photoCount + l.splatNeeds)) * 100)
-    return (
-      `<div class="splat">` +
-      `<b>${l.splatNeeds} more photograph${l.splatNeeds === 1 ? '' : 's'} until this place can be rebuilt in 3D</b>` +
-      `<span class="splat-bar"><i style="width:${pct}%"></i></span>` +
-      `<span>Shoot it from a different angle than the ones above.</span>` +
-      `</div>`
-    )
-  }
-  return (
-    `<div class="splat">` +
-    `<b>Enough photographs to rebuild this place in 3D.</b>` +
-    `<span>${l.photoCount} images, from ${l.claimCount} visit${l.claimCount === 1 ? '' : 's'}.</span>` +
-    `<button id="splatBtn" class="claim">Build the 3D model</button>` +
-    `<a class="splat-dl" href="/api/landmark/${encodeURIComponent(l.id)}/photos.zip">or download the ${l.photoCount} photos</a>` +
-    `<p id="splatMsg" class="splat-msg"></p>` +
-    `</div>`
-  )
-}
-
-function wireSplat(l: LandmarkState): void {
-  const btn = document.getElementById('splatBtn') as HTMLButtonElement | null
-  if (!btn) return
-  btn.onclick = async () => {
-    btn.disabled = true
-    btn.textContent = 'Starting…'
-    const msg = document.getElementById('splatMsg')
-    try {
-      const r = (await (
-        await fetch(`/api/landmark/${encodeURIComponent(l.id)}/generate-splat`, { method: 'POST' })
-      ).json()) as SplatResponse
-      if (msg) msg.textContent = r.message
-      btn.textContent = r.ok ? 'Reconstructing…' : 'Build the 3D model'
-      btn.disabled = r.ok
-    } catch {
-      if (msg) msg.textContent = 'Could not reach the server.'
-      btn.disabled = false
-      btn.textContent = 'Build the 3D model'
-    }
-  }
-}
-
 /* ---------------- walking route (§3.10) ---------------- */
 
 interface RouteLine {
@@ -883,6 +908,7 @@ function connect(): void {
       setLandmarks(m.landmarks)
       refreshClusterSource()
       syncMarkers()
+      refreshCity()
       paintColourbar(m.stats.city.palette)
     } else if (m.t === 'claimed') {
       const i = landmarks.findIndex((l) => l.id === m.landmark.id)
@@ -899,18 +925,12 @@ function connect(): void {
             .setLngLat([m.landmark.lng, m.landmark.lat])
             .addTo(map),
         )
+        refreshCity() // the column rises as the photo lands
       }
     } else if (m.t === 'tick') {
       paintColourbar(m.stats.city.palette)
       standings = m.standings
       if (!$('board').hasAttribute('hidden')) paintBoard()
-    } else if (m.t === 'splat') {
-      const l = landmarks.find((x) => x.id === m.landmarkId)
-      // The pin carries no splat fields — sheets read them from
-      // /api/landmark/:id — so a finished model only needs the open sheet
-      // reopened to show it.
-      void l
-      if (openId === m.landmarkId && m.state !== 'pending') void openSheet(m.landmarkId)
     }
   }
   ws.onclose = () => setTimeout(connect, 1500)
@@ -920,6 +940,7 @@ function connect(): void {
 
 $('sheetClose').onclick = closeSheet
 $('meBtn').onclick = () => askHandle()
+$('cityBtn').onclick = toggleCity
 $('rankBtn').onclick = openBoard
 $('boardClose').onclick = () => $('board').setAttribute('hidden', '')
 map.on('click', closeSheet)

@@ -10,7 +10,6 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'web/index.html'),
         dashboard: resolve(__dirname, 'web/dashboard.html'),
-        splat: resolve(__dirname, 'web/splat.html'),
       },
     },
   },
@@ -20,7 +19,6 @@ export default defineConfig({
       '/ws': { target: 'ws://localhost:8787', ws: true },
       '/api': 'http://localhost:8787',
       '/photos': 'http://localhost:8787',
-      '/splats': 'http://localhost:8787',
     },
   },
 })
