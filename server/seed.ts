@@ -135,7 +135,10 @@ async function main(): Promise<void> {
     lng: VENUE.lng,
     tier: 3,
     category: 'venue',
-    description: 'The hackathon itself. Claimable from inside the building.',
+    description:
+      'The hackathon itself, held indoors at Stackt Market. Photos from inside — ' +
+      'the room, tables, screens, people working, shipping-container walls — are ' +
+      'exactly what belongs here.',
     photoCount: 0,
     funFact: null,
     splatUrl: null,

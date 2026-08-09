@@ -103,6 +103,103 @@ function syncMarkers(): void {
   }
 }
 
+/* ---------------- the city in three dimensions ---------------- */
+//
+// Every place is a column. Unphotographed places are low grey stubs — the city
+// as it stands. Each photograph raises its column and pulls it toward the
+// colour of what was actually photographed there. So the skyline *is* the
+// dataset: height is attention, colour is what the place looks like.
+
+let cityOn = false
+
+function squareAround(lng: number, lat: number, m: number): [number, number][][] {
+  const dLat = m / 111_320
+  const dLng = m / (111_320 * Math.cos((lat * Math.PI) / 180))
+  return [
+    [
+      [lng - dLng, lat - dLat],
+      [lng + dLng, lat - dLat],
+      [lng + dLng, lat + dLat],
+      [lng - dLng, lat + dLat],
+      [lng - dLng, lat - dLat],
+    ],
+  ]
+}
+
+interface CityFeature {
+  type: 'Feature'
+  properties: { height: number; colour: string; name: string }
+  geometry: { type: 'Polygon'; coordinates: [number, number][][] }
+}
+
+interface CityData {
+  type: 'FeatureCollection'
+  features: CityFeature[]
+}
+
+function cityGeoJSON(): CityData {
+  return {
+    type: 'FeatureCollection',
+    features: landmarks.map((l) => ({
+      type: 'Feature',
+      properties: {
+        height: 10 + l.photoCount * 34,
+        colour: l.palette[0] ? hex(l.palette[0]) : '#b9b6ae',
+        name: l.name,
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: squareAround(l.lng, l.lat, l.tier >= 2 ? 26 : 17),
+      },
+    })),
+  }
+}
+
+function refreshCity(): void {
+  if (!mapReady) return
+  const src = map.getSource('city') as maplibregl.GeoJSONSource | undefined
+  if (src) src.setData(cityGeoJSON() as unknown as Parameters<typeof src.setData>[0])
+}
+
+function toggleCity(): void {
+  if (!mapReady) return
+  cityOn = !cityOn
+  const btn = document.getElementById('cityBtn')
+  if (btn) btn.classList.toggle('on', cityOn)
+
+  if (cityOn) {
+    if (!map.getSource('city')) {
+      map.addSource('city', {
+        type: 'geojson',
+        data: cityGeoJSON(),
+      } as unknown as Parameters<typeof map.addSource>[1])
+      map.addLayer({
+        id: 'city',
+        type: 'fill-extrusion',
+        source: 'city',
+        paint: {
+          'fill-extrusion-color': ['get', 'colour'],
+          'fill-extrusion-height': ['get', 'height'],
+          'fill-extrusion-base': 0,
+          'fill-extrusion-opacity': 0.92,
+        },
+      })
+    } else {
+      map.setLayoutProperty('city', 'visibility', 'visible')
+      refreshCity()
+    }
+    // Applied instantly, not eased: a geolocation fix arriving mid-flight
+    // cancels an in-progress easeTo and leaves the map flat.
+    map.setPitch(55)
+    map.setBearing(-20)
+    if (map.getZoom() < 15.4) map.setZoom(15.4)
+  } else {
+    if (map.getLayer('city')) map.setLayoutProperty('city', 'visibility', 'none')
+    map.setPitch(0)
+    map.setBearing(0)
+  }
+}
+
 /* ---------------- geolocation ---------------- */
 
 function watchMe(): void {
@@ -451,6 +548,7 @@ function connect(): void {
     if (m.t === 'init') {
       landmarks = m.landmarks
       syncMarkers()
+      refreshCity()
       paintColourbar(m.stats.city.palette)
     } else if (m.t === 'claimed') {
       const i = landmarks.findIndex((l) => l.id === m.landmark.id)
@@ -464,6 +562,7 @@ function connect(): void {
             .setLngLat([m.landmark.lng, m.landmark.lat])
             .addTo(map),
         )
+        refreshCity() // the column rises as the photo lands
       }
     } else if (m.t === 'tick') {
       paintColourbar(m.stats.city.palette)
@@ -476,6 +575,7 @@ function connect(): void {
 
 $('sheetClose').onclick = closeSheet
 $('meBtn').onclick = () => askHandle()
+$('cityBtn').onclick = toggleCity
 map.on('click', closeSheet)
 paintHandle()
 watchMe()

@@ -17,7 +17,7 @@ import type {
   ServerMsg,
 } from '../shared/types'
 import { REJECT_TEXT } from '../shared/types'
-import { closeDb, DATA_DIR, insertClaim, insertPhoto, logAttempt, photoHashesFor } from './db'
+import { closeDb, DATA_DIR, insertClaim, insertPhoto, logAttempt, photoHashesFor, setSplatUrl } from './db'
 import {
   addClaim,
   addPhoto,
@@ -373,6 +373,28 @@ const server = createServer((req, res) => {
         clearTimeout(t)
         fallback()
       })
+    return
+  }
+
+  // Phone-friendly splat attachment for the mid-judging moment: open
+  //   /api/set-splat?token=…&id=venue&url=https://lumalabs.ai/embed/…
+  // in any browser. Tokened, https-only, updates live with no restart.
+  if (url === '/api/set-splat') {
+    const q = new URLSearchParams((req.url ?? '').split('?')[1] ?? '')
+    const token = process.env.ADMIN_TOKEN ?? ''
+    if (!token || q.get('token') !== token) {
+      json(res, 403, { error: 'bad token' })
+      return
+    }
+    const lm = byId.get(q.get('id') ?? '')
+    const target = q.get('url') ?? ''
+    if (!lm || !/^https:\/\//.test(target)) {
+      json(res, 400, { error: 'need id and an https url' })
+      return
+    }
+    setSplatUrl(lm.id, target)
+    lm.splatUrl = target // live, no restart
+    json(res, 200, { ok: true, landmark: lm.name, splatUrl: target })
     return
   }
 

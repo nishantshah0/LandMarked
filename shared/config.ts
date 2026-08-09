@@ -7,7 +7,10 @@ export const VENUE = {
   // 28 Bathurst St, Toronto — Bathurst & Front
   lat: 43.641,
   lng: -79.4022,
-  radiusM: 250, // generous: shipping containers, GPS drifts
+  // Judging happens in an indoor room: no sky view, so fixes drift badly and
+  // can land hundreds of metres off. Wide on purpose — this pin exists to be
+  // claimable from inside the building.
+  radiusM: 600,
 }
 
 /** Tight bbox around the venue. One neighbourhood, never the whole GTA —
@@ -27,12 +30,14 @@ export const CFG = {
   claimHours: 3,
   /** how close you must be to claim an ordinary landmark */
   claimRadiusM: 100,
-  /** GPS in dense downtown drifts 20–50m; anything tighter rejects honest players */
-  minAccuracyM: 200,
+  /** Indoors a phone reports 100–500m accuracy; rejecting that rejects honest players */
+  minAccuracyM: 600,
   /** hamming distance under which two photos count as the same picture */
   phashDupDistance: 8,
   maxPhotoBytes: 6_000_000,
-  visionMinConfidence: 60,
+  /** This is a game, not a security system — a false rejection is worse than a
+   *  false accept, and the deterministic checks do the real work. */
+  visionMinConfidence: 45,
   broadcastMs: 2_000,
   timeline: { bucketMs: 15 * 60_000, maxBuckets: 32 },
 } as const
