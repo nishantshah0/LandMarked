@@ -18,25 +18,68 @@ Every attempt — pass or fail — is logged with its reason, which is where the
 
 Then the part that outlives the game: the photo's dominant palette, brightness, saturation and sky fraction are extracted (arithmetic over pixels, no model), stored forever, and blended into the neighbourhood's live colour — sliceable by hour and by place on the public dashboard.
 
+## Iconic places are harder to take
+
+Tier-3 landmarks are **trivia-gated**: the camera will not open until you answer that place's question. Two details make it a real mechanic rather than a UI flourish:
+
+- a gated landmark **never sends its answer to the browser** — it ships the question and options only, and the server grades the submission;
+- the claim endpoint **re-checks the answer independently**, so skipping the modal and posting straight to `/api/claim` fails the same way.
+
+It fails open by design: a landmark with no question is simply not gated, so a skipped `npm run funfacts` can never make a place unclaimable. The venue's question is hand-written in `shared/config.ts` and backfilled at boot, because that is the one gate the live demo depends on.
+
+Questions are **grounded, never invented**. The seed keeps a whitelist of OSM tags verbatim — inscription, artist, dates, material, architect, heritage status — and for landmarks carrying a `wikipedia` tag the generator also pulls the article's opening extract. The model builds the question from that material and returns `grounded: false` rather than invent anything when the grounding is thin, so a mural with nothing but a name gets no quiz instead of a plausible-sounding fabrication. 3,165 of the 4,235 landmarks carry facts; 330 have a Wikipedia article behind them.
+
+## The place in 3D
+
+Two capture paths land in the same `splatUrl` field, and the sheet renders on its shape.
+
+**Fast path — one person, ~60 seconds.** Walk a slow circle around the subject in the Luma AI phone app, copy the share URL, and attach it. The sheet embeds it inline:
+
+```bash
+npx tsx server/set-splat.ts --list
+npx tsx server/set-splat.ts venue "https://lumalabs.ai/embed/…"
+```
+
+**Archive path — the model comes out of the game itself.** Every accepted photo is a photograph of one place from one angle, which is exactly the input a photogrammetry pipeline wants. Once a place crosses eight photographs the app offers to rebuild it as a **3D Gaussian Splat**, rendered in-browser at `/splat.html?id=<landmarkId>` by [Spark](https://sparkjs.dev) — the model is served from our own `data/splats/`, so the viewer depends on no CDN, iframe or third-party player.
+
+**On generation, honestly:** the plan named Luma's Capture API, which was discontinued and its client archived in September 2024 — there is no key that makes it work. So generation is a pluggable step between the two halves that do work:
+
+```bash
+npm run splat -- --list              # what has a model, what could
+npm run splat -- --export <id>       # every photo of that place, as one zip
+#   → reconstruct it: Luma web app / Polycam / Postshot
+npm run splat -- <id> ./model.ply    # register it; the app serves and renders it
+```
+
+Point `SPLAT_API_URL` at any service that takes a zip of photos and returns a splat file and the in-app **Build the 3D model** button runs the same pipeline end to end, streaming the result back over the same WebSocket the map uses. Formats: `.ply`, `.spz`, `.splat`, `.ksplat`, `.sog`.
+
 ## Pages
 
-- `/` — the map. Tap a pin: who holds it, its permanent photo archive, its own blended colour, a **Walk me there** walking route (OSRM, with a straight-line fallback).
+- `/` — the map, covering the whole GTA. Zoomed out it draws clustered counts (tap one to dive in); from street zoom it draws individual pins, and only the ones inside your viewport. Tap a pin: who holds it, its permanent photo archive, its own blended colour, a **Walk me there** walking route (OSRM, with a straight-line fallback), and its 3D model once one exists.
+
+  The socket sends a deliberately thin per-pin payload — 131 bytes each, 543 KB for all 4,235 — because the full landmark record is roughly three times that and the map reads almost none of it. Sheets fetch their own detail from `/api/landmark/:id`; `/api/state` stays the fat public dataset.
 - `/dashboard.html` — the colour of the neighbourhood: live palette, the day hour by hour, verification telemetry, claims over time, standings, extremes. Everything recomputed from real data on every update.
+- `/splat.html?id=<landmarkId>` — a place rebuilt out of its own photographs.
+- `/api/landmark/<id>/photos.zip` — that place's whole archive, as the reconstruction input.
 - `/api/state` — the raw dataset, public.
 
 ## Run it
 
 ```bash
 npm install
-npm run seed   # pulls real landmarks near the venue from OpenStreetMap
-npm run dev    # map on :5173, server on :8787
+cp .env.example .env   # every key in it is optional
+npm run seed           # pulls real landmarks near the venue from OpenStreetMap
+npm run funfacts       # optional: questions per landmark (gated tiers first)
+#   npm run seed -- --force     re-pull and widen, keeping photos and claims
+#   npm run funfacts -- --gated only the tier-3 landmarks that need a gate
+npm run dev            # map on :5173, server on :8787
 ```
 
 **Before the event:** set `VENUE` in `shared/config.ts` to the actual venue coordinates, delete `data/`, and reseed. The venue itself is a claimable tier-3 landmark with a generous indoor radius — that's the judge-demo moment.
 
 **Deploy:** the included `Dockerfile` and `render.yaml` deploy in a few minutes on Render's free tier. HTTPS is required — browsers only expose camera and precise geolocation on secure origins. Mount the disk at `/app/data` or the archive resets on redeploy.
 
-`ANTHROPIC_API_KEY` (optional) enables vision verification. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
+Keys live in `.env` (gitignored, kept out of the image by `.dockerignore`); see `.env.example` for what each one switches on. All are optional — `OPENAI_API_KEY` **or** `ANTHROPIC_API_KEY` enables vision verification and question generation (either provider works; OpenAI wins when both are set), and `ADMIN_TOKEN` enables registering a 3D model over HTTP. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
 
 ## Privacy
 
@@ -44,4 +87,4 @@ Identity is a chosen handle in `localStorage` — no accounts, no email. Locatio
 
 ## Stack
 
-Vanilla TypeScript. MapLibre GL with OpenFreeMap tiles (no key), Node + `ws` + `node:sqlite`, photos on disk. No framework, no ORM, no external services on the critical path.
+Vanilla TypeScript. MapLibre GL with OpenFreeMap tiles (no key), Node + `ws` + `node:sqlite`, photos on disk, a store-only ZIP writer in ~90 lines rather than an archiver dependency. Three.js + Spark on the 3D page only — it is a separate bundle, so the map never pays for it. No framework, no ORM, no external services on the critical path.

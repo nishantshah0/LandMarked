@@ -2,12 +2,13 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { Tier } from '../shared/config'
-import type { Claim, Landmark, Photo, RejectReason } from '../shared/types'
+import type { Claim, Landmark, Photo, RejectReason, SplatState } from '../shared/types'
 
 /** Overridable so the labeled specimen instance keeps its own separate data. */
 export const DATA_DIR = process.env.SEEN_DATA_DIR ?? 'data'
 
 mkdirSync(join(DATA_DIR, 'photos'), { recursive: true })
+mkdirSync(join(DATA_DIR, 'splats'), { recursive: true })
 
 const DB_PATH = join(DATA_DIR, 'seen.db')
 let db = new DatabaseSync(DB_PATH)
@@ -37,16 +38,22 @@ db.exec(`
   );
 `)
 
-// Added after first ship; idempotent so existing databases upgrade in place.
-try {
-  db.exec('ALTER TABLE landmarks ADD COLUMN fun_fact TEXT')
-} catch {
-  // column already exists
-}
-try {
-  db.exec('ALTER TABLE landmarks ADD COLUMN splat_url TEXT')
-} catch {
-  // column already exists
+// Columns added after first ship. Each ALTER is attempted independently and
+// idempotently, so an existing database upgrades in place on boot and a fresh
+// one is unaffected.
+for (const col of [
+  'fun_fact TEXT',
+  'osm_facts TEXT',
+  'splat_url TEXT',
+  "splat_state TEXT NOT NULL DEFAULT 'none'",
+  'splat_photos INTEGER NOT NULL DEFAULT 0',
+  'splat_updated_at INTEGER',
+]) {
+  try {
+    db.exec(`ALTER TABLE landmarks ADD COLUMN ${col}`)
+  } catch {
+    // column already exists
+  }
 }
 
 function reopen(): void {
@@ -76,13 +83,36 @@ export function landmarkCount(): number {
 }
 
 export function insertLandmarks(list: Landmark[]): void {
+  // COALESCE keeps anything already earned: a reseed must not wipe a landmark's
+  // photo count, its generated question or its 3D model just because the fresh
+  // Overpass row does not carry them.
   const st = db.prepare(
-    `INSERT OR REPLACE INTO landmarks (id,name,lat,lng,tier,category,description,photo_count)
-     VALUES (?,?,?,?,?,?,?,?)`,
+    `INSERT INTO landmarks (id,name,lat,lng,tier,category,description,osm_facts,photo_count,fun_fact)
+     VALUES (?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       lat = excluded.lat,
+       lng = excluded.lng,
+       tier = excluded.tier,
+       category = excluded.category,
+       description = COALESCE(excluded.description, landmarks.description),
+       osm_facts = COALESCE(excluded.osm_facts, landmarks.osm_facts),
+       fun_fact = COALESCE(landmarks.fun_fact, excluded.fun_fact)`,
   )
   db.exec('BEGIN')
   for (const l of list) {
-    st.run(l.id, l.name, l.lat, l.lng, l.tier, l.category, l.description, l.photoCount)
+    st.run(
+      l.id,
+      l.name,
+      l.lat,
+      l.lng,
+      l.tier,
+      l.category,
+      l.description,
+      l.osmFacts,
+      l.photoCount,
+      l.funFact,
+    )
   }
   db.exec('COMMIT')
 }
@@ -97,7 +127,10 @@ interface LRow {
   description: string | null
   photo_count: number
   fun_fact: string | null
+  osm_facts: string | null
   splat_url: string | null
+  splat_state: string | null
+  splat_photos: number | null
 }
 
 export function allLandmarks(): Landmark[] {
@@ -110,9 +143,12 @@ export function allLandmarks(): Landmark[] {
     tier: r.tier as Tier,
     category: r.category,
     description: r.description,
+    osmFacts: r.osm_facts ?? null,
     photoCount: Number(r.photo_count),
     funFact: r.fun_fact ?? null,
     splatUrl: r.splat_url ?? null,
+    splatState: (r.splat_state as SplatState | null) ?? 'none',
+    splatPhotos: Number(r.splat_photos ?? 0),
   }))
 }
 
@@ -122,9 +158,31 @@ export function setFunFact(id: string, json: string): void {
   })
 }
 
+/* ---------------- 3D reconstruction ---------------- */
+
+export function setSplat(
+  id: string,
+  state: SplatState,
+  url: string | null,
+  photos: number,
+): void {
+  guard(() => {
+    db.prepare(
+      'UPDATE landmarks SET splat_state = ?, splat_url = ?, splat_photos = ?, splat_updated_at = ? WHERE id = ?',
+    ).run(state, url, photos, Date.now(), id)
+  })
+}
+
+/** Attach an already-hosted model (a Luma embed URL) — the phone-capture path.
+ *
+ *  This must move splat_state to 'ready' as well as writing the URL: the sheet
+ *  renders on state, not on the URL being non-null, so setting one without the
+ *  other stores a model that never appears. */
 export function setSplatUrl(id: string, url: string): void {
   guard(() => {
-    db.prepare('UPDATE landmarks SET splat_url = ? WHERE id = ?').run(url, id)
+    db.prepare(
+      "UPDATE landmarks SET splat_url = ?, splat_state = 'ready', splat_updated_at = ? WHERE id = ?",
+    ).run(url, Date.now(), id)
   })
 }
 

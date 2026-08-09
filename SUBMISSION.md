@@ -25,6 +25,10 @@ The claim rotates. The photograph doesn't. Every accepted photo joins that place
 
 Contributing takes under a minute with zero explanation: tap a glowing pin, walk (there's a built-in walking route), shoot. No account — just a handle.
 
+Iconic places are harder to take: their camera is locked behind a question about the place, and the answer is never sent to the browser — the server grades it, and grades it again when the claim lands, so the gate can't be clicked past in devtools.
+
+And once a place has been photographed enough times from enough angles, its archive stops being a gallery and becomes geometry: eight photographs in, the app offers to rebuild that place as a **3D Gaussian Splat** you can orbit in the browser. The photos were always a 3D capture of a city block — nobody had bothered to treat them as one.
+
 ## The transformation (our technical core)
 
 **One photograph → three independent verifications → a permanent archive entry → a measurable shift in the neighbourhood's colour.**
@@ -55,6 +59,12 @@ Vanilla TypeScript end to end — no framework, no ORM. MapLibre GL with OpenFre
 The best bug: our unclaimed pins had a gentle CSS pulse animating `transform` — and the pin element *is* MapLibre's marker root, whose positioning is an inline transform. The animation silently overrode it every frame and collapsed all 41 pins into a single stack at the map origin. The map looked completely broken; the fix was animating box-shadow instead. A one-line lesson about CSS cascade priority we will never forget.
 
 Also: Overpass rejects requests without a descriptive User-Agent and its main instance rate-limits hard, so the seed walks three public mirrors; and we made claim expiry *derived* (a place's owner is just its newest non-expired claim) so there are no cron jobs and no expiry bugs — the server literally cannot disagree with itself about who holds what.
+
+## The 3D reconstruction, honestly
+
+We wanted crowd photos to become a real 3D model, and we shipped the two halves that are genuinely ours: any place's archive exports as one zip — the exact input a photogrammetry pipeline eats — and the finished splat is **served from our own disk and rendered in our own viewer** (Three.js + Spark), not embedded from someone else's iframe.
+
+The generator in between is pluggable, and we'll say plainly why: the Luma Capture API we'd planned on was discontinued and its client archived in Sept 2024, so no key makes it work. Point `SPLAT_API_URL` at any zip→splat service and the in-app button runs end to end; otherwise the same pipeline runs by hand in three commands and lands in the same viewer. We'd rather ship a pipeline with one honest manual step than claim an automated one that doesn't exist.
 
 ## What's next
 

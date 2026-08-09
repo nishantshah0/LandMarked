@@ -1,3 +1,4 @@
+import type { FeatureCollection, Point } from 'geojson'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { CFG, TIER_LABEL, VENUE } from '../shared/config'
@@ -6,9 +7,11 @@ import { hex } from '../shared/palette'
 import type {
   ArchiveResponse,
   ClaimResponse,
+  LandmarkPin,
   LandmarkState,
   Photo,
   ServerMsg,
+  SplatResponse,
 } from '../shared/types'
 import { analyse, shrink } from './analyse'
 
@@ -35,10 +38,19 @@ function paintHandle(): void {
 
 /* ---------------- state ---------------- */
 
-let landmarks: LandmarkState[] = []
+let landmarks: LandmarkPin[] = []
+const byId = new Map<string, LandmarkPin>()
 const markers = new Map<string, maplibregl.Marker>()
 let here: { lat: number; lng: number; accuracy: number } | null = null
 let openId: string | null = null
+
+/** Below this zoom the city is drawn as clustered counts; at or above it, as
+ *  individual pins. A DOM marker per landmark is the right call for a few
+ *  hundred and completely wrong for four thousand — the browser cannot lay out
+ *  that many absolutely-positioned nodes on every map move. */
+const PIN_ZOOM = 14
+/** Hard ceiling on live DOM markers, whatever the viewport contains. */
+const MAX_PINS = 500
 
 /* ---------------- map ---------------- */
 
@@ -67,18 +79,21 @@ let meMarker: maplibregl.Marker | null = null
 let mapReady = false
 map.on('load', () => {
   mapReady = true
+  installClusterLayers()
   syncMarkers()
 })
 map.on('error', (e) => console.warn('[map]', e.error?.message ?? e))
+map.on('moveend', syncMarkers)
+map.on('zoomend', syncMarkers)
 
-function markerEl(l: LandmarkState): HTMLElement {
+function markerEl(l: LandmarkPin): HTMLElement {
   // Ownership is time-derived: a hold that lapsed since the last broadcast must
   // render as free without waiting for a reload.
   const owner = l.owner && l.owner.expiresAt > Date.now() ? l.owner : null
   const el = document.createElement('button')
   el.className = 'pin' + (owner ? ' owned' : ' free') + (l.tier >= 2 ? ' major' : '')
   el.type = 'button'
-  const colour = owner ? owner.avatarColor : l.palette[0] ? hex(l.palette[0]) : null
+  const colour = owner ? owner.avatarColor : l.tint ? hex(l.tint) : null
   if (colour) el.style.setProperty('--pc', colour)
   el.innerHTML =
     `<span class="pin-dot">${owner ? owner.handle.slice(0, 1).toUpperCase() : ''}</span>` +
@@ -91,16 +106,148 @@ function markerEl(l: LandmarkState): HTMLElement {
   return el
 }
 
+/* ---------------- rendering a whole city ---------------- */
+
+function pinsGeoJSON(): FeatureCollection {
+  return {
+    type: 'FeatureCollection',
+    features: landmarks.map((l) => ({
+      type: 'Feature',
+      properties: { id: l.id, held: l.owner && l.owner.expiresAt > Date.now() ? 1 : 0 },
+      geometry: { type: 'Point', coordinates: [l.lng, l.lat] },
+    })),
+  }
+}
+
+/** Clustered counts, drawn by the GPU, for every zoom below PIN_ZOOM. Tapping a
+ *  cluster zooms into it, which is how you get from "the GTA" to a street. */
+function installClusterLayers(): void {
+  map.addSource('pins', {
+    type: 'geojson',
+    data: pinsGeoJSON(),
+    cluster: true,
+    clusterRadius: 55,
+    clusterMaxZoom: PIN_ZOOM - 1,
+  })
+
+  map.addLayer({
+    id: 'clusters',
+    type: 'circle',
+    source: 'pins',
+    filter: ['has', 'point_count'],
+    maxzoom: PIN_ZOOM,
+    paint: {
+      'circle-color': '#17181c',
+      'circle-opacity': 0.86,
+      'circle-stroke-width': 2.5,
+      'circle-stroke-color': '#f7f5ef',
+      // Area should read as quantity, so step the radius with the count.
+      'circle-radius': ['step', ['get', 'point_count'], 15, 10, 20, 50, 26, 200, 33],
+    },
+  })
+
+  map.addLayer({
+    id: 'cluster-count',
+    type: 'symbol',
+    source: 'pins',
+    filter: ['has', 'point_count'],
+    maxzoom: PIN_ZOOM,
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-font': ['Noto Sans Bold'],
+      'text-size': 12,
+    },
+    paint: { 'text-color': '#f7f5ef' },
+  })
+
+  // Single places below PIN_ZOOM still deserve a dot, or a lone landmark in the
+  // suburbs would simply vanish between zoom levels.
+  map.addLayer({
+    id: 'loners',
+    type: 'circle',
+    source: 'pins',
+    filter: ['!', ['has', 'point_count']],
+    maxzoom: PIN_ZOOM,
+    paint: {
+      'circle-radius': 5,
+      'circle-color': ['case', ['==', ['get', 'held'], 1], '#e5533d', '#17181c'],
+      'circle-opacity': 0.8,
+      'circle-stroke-width': 1.5,
+      'circle-stroke-color': '#f7f5ef',
+    },
+  })
+
+  map.on('click', 'clusters', (e) => {
+    const f = map.queryRenderedFeatures(e.point, { layers: ['clusters'] })[0]
+    const src = map.getSource('pins') as maplibregl.GeoJSONSource
+    void src.getClusterExpansionZoom(f.properties.cluster_id as number).then((z) => {
+      map.easeTo({ center: (f.geometry as Point).coordinates as [number, number], zoom: z })
+    })
+  })
+  map.on('click', 'loners', (e) => {
+    const id = map.queryRenderedFeatures(e.point, { layers: ['loners'] })[0]?.properties.id
+    if (typeof id === 'string') void openSheet(id)
+  })
+  for (const layer of ['clusters', 'loners']) {
+    map.on('mouseenter', layer, () => (map.getCanvas().style.cursor = 'pointer'))
+    map.on('mouseleave', layer, () => (map.getCanvas().style.cursor = ''))
+  }
+}
+
+function refreshClusterSource(): void {
+  if (!mapReady) return
+  const src = map.getSource('pins') as maplibregl.GeoJSONSource | undefined
+  if (src) src.setData(pinsGeoJSON())
+}
+
+/** Keep a DOM marker for every landmark on screen, and none for any that isn't.
+ *  Diffed rather than rebuilt, so panning costs only what actually changed. */
 function syncMarkers(): void {
   if (!mapReady) return
-  for (const l of landmarks) {
-    const existing = markers.get(l.id)
-    if (existing) existing.remove()
-    const m = new maplibregl.Marker({ element: markerEl(l) })
-      .setLngLat([l.lng, l.lat])
-      .addTo(map)
-    markers.set(l.id, m)
+
+  if (map.getZoom() < PIN_ZOOM) {
+    for (const m of markers.values()) m.remove()
+    markers.clear()
+    return
   }
+
+  const b = map.getBounds()
+  const wanted = new Set<string>()
+  for (const l of landmarks) {
+    if (l.lng < b.getWest() || l.lng > b.getEast()) continue
+    if (l.lat < b.getSouth() || l.lat > b.getNorth()) continue
+    wanted.add(l.id)
+    if (wanted.size >= MAX_PINS) break
+  }
+
+  for (const [id, m] of markers) {
+    if (!wanted.has(id)) {
+      m.remove()
+      markers.delete(id)
+    }
+  }
+  for (const id of wanted) {
+    if (markers.has(id)) continue
+    const l = byId.get(id)
+    if (!l) continue
+    markers.set(
+      id,
+      new maplibregl.Marker({ element: markerEl(l) }).setLngLat([l.lng, l.lat]).addTo(map),
+    )
+  }
+}
+
+/** Re-render the pins already on screen — used when a hold lapses with time. */
+function repaintVisible(): void {
+  for (const m of markers.values()) m.remove()
+  markers.clear()
+  syncMarkers()
+}
+
+function setLandmarks(list: LandmarkPin[]): void {
+  landmarks = list
+  byId.clear()
+  for (const l of list) byId.set(l.id, l)
 }
 
 /* ---------------- the city in three dimensions ---------------- */
@@ -144,7 +291,7 @@ function cityGeoJSON(): CityData {
       type: 'Feature',
       properties: {
         height: 10 + l.photoCount * 34,
-        colour: l.palette[0] ? hex(l.palette[0]) : '#b9b6ae',
+        colour: l.tint ? hex(l.tint) : '#b9b6ae',
         name: l.name,
       },
       geometry: {
@@ -325,29 +472,29 @@ async function openSheet(id: string): Promise<void> {
       <button id="dirBtn" class="claim ghost2">Walk me there</button>
     </div>
     <div id="routeInfo" class="routeinfo"></div>
-    ${
-      l.splatUrl
-        ? `<h3 class="archive-h">Walk around it — 3D, built from photographs</h3>
-           <iframe class="splat" src="${l.splatUrl}" loading="lazy" allow="fullscreen" title="3D model of ${l.name}"></iframe>`
-        : ''
-    }
+    ${l.gated ? `<p class="gate-flag">🔒 Iconic — answer its question to unlock the camera</p>` : ''}
     ${funFactHtml(l.funFact)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
+    ${splatHtml(l)}
   `
   wireFunFact()
+  wireSplat(l)
 
   const btn = document.getElementById('claimBtn') as HTMLButtonElement
   btn.onclick = () => {
     if (!getHandle() && !askHandle()) return
-    ;($('camera') as HTMLInputElement).click()
+    pendingAnswer = null
+    const camera = (): void => ($('camera') as HTMLInputElement).click()
+    if (l.gated) openGate(l, camera)
+    else camera()
   }
   const dir = document.getElementById('dirBtn')
   if (dir) dir.onclick = () => void showRoute(l.id)
   refreshDistance()
 }
 
-/* ---------------- fun fact (flavor, never a gate) ---------------- */
+/* ---------------- fun fact (flavor on ordinary places) ---------------- */
 
 function funFactHtml(raw: string | null): string {
   if (!raw) return ''
@@ -379,6 +526,149 @@ function wireFunFact(): void {
       if (note) note.hidden = false
     }
   })
+}
+
+/* ---------------- the iconic-tier gate (§3.6) ---------------- */
+
+// The answer lives only on the server: a gated landmark ships its question and
+// options and nothing else. Answering here just unlocks the camera early — the
+// claim carries the answer and the server grades it again for real.
+let pendingAnswer: number | null = null
+
+function openGate(l: LandmarkState, onPass: () => void): void {
+  if (!l.trivia) {
+    onPass()
+    return
+  }
+  showModal(`
+    <div class="gate">
+      <p class="gate-tier">Iconic — you have to know it to take it</p>
+      <h2>${l.name}</h2>
+      <p class="gate-q">${l.trivia.question}</p>
+      <div class="gate-opts">
+        ${l.trivia.options.map((o, i) => `<button class="ff-opt" data-i="${i}">${o}</button>`).join('')}
+      </div>
+      <p class="gate-note" hidden></p>
+    </div>`)
+
+  const note = document.querySelector<HTMLElement>('.gate-note')
+  document.querySelectorAll<HTMLButtonElement>('.gate-opts .ff-opt').forEach((b) => {
+    b.onclick = async () => {
+      const i = Number(b.dataset.i)
+      document.querySelectorAll<HTMLButtonElement>('.gate-opts .ff-opt').forEach((x) => {
+        x.disabled = true
+      })
+      let correct = false
+      try {
+        const r = (await (
+          await fetch(`/api/landmark/${encodeURIComponent(l.id)}/trivia`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ answer: i }),
+          })
+        ).json()) as { correct?: boolean }
+        correct = r.correct === true
+      } catch {
+        // Network trouble must not brick the demo: let them through and let the
+        // claim endpoint be the judge.
+        correct = true
+      }
+
+      if (correct) {
+        b.classList.add('right')
+        pendingAnswer = i
+        if (note) {
+          note.hidden = false
+          note.textContent = 'Right — opening the camera.'
+        }
+        setTimeout(() => {
+          $('modal').setAttribute('hidden', '')
+          onPass()
+        }, 650)
+      } else {
+        b.classList.add('wrong')
+        if (note) {
+          note.hidden = false
+          note.textContent = 'Not that one. Look around and try again.'
+        }
+        setTimeout(() => {
+          document.querySelectorAll<HTMLButtonElement>('.gate-opts .ff-opt').forEach((x) => {
+            x.disabled = false
+            x.classList.remove('wrong')
+          })
+        }, 900)
+      }
+    }
+  })
+}
+
+/* ---------------- the place in 3D (§3.9) ---------------- */
+
+function splatHtml(l: LandmarkState): string {
+  if (l.splatState === 'ready' && l.splatUrl) {
+    // Two capture paths land in the same field, so render on its shape. A
+    // remote URL is somebody's hosted capture (Luma) and embeds inline; a
+    // local path is a model we hold and serve, opened in our own viewer.
+    const hosted = /^https?:\/\//i.test(l.splatUrl)
+    if (hosted) {
+      return (
+        `<h3 class="archive-h">Walk around it — 3D, built from photographs</h3>` +
+        `<iframe class="splat-frame" src="${l.splatUrl}" loading="lazy" allow="fullscreen" title="3D model of ${l.name}"></iframe>`
+      )
+    }
+    return (
+      `<div class="splat ready">` +
+      `<b>This place exists in 3D.</b>` +
+      `<span>Reconstructed from ${l.splatPhotos} of its photographs.</span>` +
+      `<a class="claim" href="/splat.html?id=${encodeURIComponent(l.id)}">Walk around it →</a>` +
+      `</div>`
+    )
+  }
+  if (l.photoCount === 0) return ''
+  if (l.splatState === 'pending') {
+    return `<div class="splat"><b>Rebuilding this place in 3D…</b><span>Takes a few minutes. It will appear here.</span></div>`
+  }
+  if (l.splatNeeds > 0) {
+    const pct = Math.round(((l.photoCount || 0) / (l.photoCount + l.splatNeeds)) * 100)
+    return (
+      `<div class="splat">` +
+      `<b>${l.splatNeeds} more photograph${l.splatNeeds === 1 ? '' : 's'} until this place can be rebuilt in 3D</b>` +
+      `<span class="splat-bar"><i style="width:${pct}%"></i></span>` +
+      `<span>Shoot it from a different angle than the ones above.</span>` +
+      `</div>`
+    )
+  }
+  return (
+    `<div class="splat">` +
+    `<b>Enough photographs to rebuild this place in 3D.</b>` +
+    `<span>${l.photoCount} images, from ${l.claimCount} visit${l.claimCount === 1 ? '' : 's'}.</span>` +
+    `<button id="splatBtn" class="claim">Build the 3D model</button>` +
+    `<a class="splat-dl" href="/api/landmark/${encodeURIComponent(l.id)}/photos.zip">or download the ${l.photoCount} photos</a>` +
+    `<p id="splatMsg" class="splat-msg"></p>` +
+    `</div>`
+  )
+}
+
+function wireSplat(l: LandmarkState): void {
+  const btn = document.getElementById('splatBtn') as HTMLButtonElement | null
+  if (!btn) return
+  btn.onclick = async () => {
+    btn.disabled = true
+    btn.textContent = 'Starting…'
+    const msg = document.getElementById('splatMsg')
+    try {
+      const r = (await (
+        await fetch(`/api/landmark/${encodeURIComponent(l.id)}/generate-splat`, { method: 'POST' })
+      ).json()) as SplatResponse
+      if (msg) msg.textContent = r.message
+      btn.textContent = r.ok ? 'Reconstructing…' : 'Build the 3D model'
+      btn.disabled = r.ok
+    } catch {
+      if (msg) msg.textContent = 'Could not reach the server.'
+      btn.disabled = false
+      btn.textContent = 'Build the 3D model'
+    }
+  }
 }
 
 /* ---------------- walking route (§3.10) ---------------- */
@@ -475,6 +765,7 @@ $('camera').addEventListener('change', async (e) => {
           accuracy: here?.accuracy,
           photo: dataUrl,
           analysis,
+          triviaAnswer: pendingAnswer,
         }),
       })
     ).json()) as ClaimResponse
@@ -546,16 +837,20 @@ function connect(): void {
       return
     }
     if (m.t === 'init') {
-      landmarks = m.landmarks
+      setLandmarks(m.landmarks)
+      refreshClusterSource()
       syncMarkers()
       refreshCity()
       paintColourbar(m.stats.city.palette)
     } else if (m.t === 'claimed') {
       const i = landmarks.findIndex((l) => l.id === m.landmark.id)
       if (i >= 0) landmarks[i] = m.landmark
-      if (mapReady) {
-        const old = markers.get(m.landmark.id)
-        if (old) old.remove()
+      byId.set(m.landmark.id, m.landmark)
+      refreshClusterSource()
+      // Only redraw the marker if that place is actually on screen; a claim
+      // across the city must not add a node to this viewport.
+      if (mapReady && markers.has(m.landmark.id)) {
+        markers.get(m.landmark.id)!.remove()
         markers.set(
           m.landmark.id,
           new maplibregl.Marker({ element: markerEl(m.landmark) })
@@ -566,6 +861,13 @@ function connect(): void {
       }
     } else if (m.t === 'tick') {
       paintColourbar(m.stats.city.palette)
+    } else if (m.t === 'splat') {
+      const l = landmarks.find((x) => x.id === m.landmarkId)
+      // The pin carries no splat fields — sheets read them from
+      // /api/landmark/:id — so a finished model only needs the open sheet
+      // reopened to show it.
+      void l
+      if (openId === m.landmarkId && m.state !== 'pending') void openSheet(m.landmarkId)
     }
   }
   ws.onclose = () => setTimeout(connect, 1500)
@@ -581,8 +883,10 @@ paintHandle()
 watchMe()
 connect()
 setInterval(refreshDistance, 4000)
-// Re-render pins each minute so 3-hour holds visibly lapse without a reload.
-setInterval(syncMarkers, 60_000)
+// Re-render the pins on screen each minute so 3-hour holds visibly lapse
+// without a reload. Only the visible ones — syncMarkers alone would leave an
+// already-mounted marker untouched, and repainting all 4000 would be absurd.
+setInterval(repaintVisible, 60_000)
 
 // One-time explainer — a stranger's first 10 seconds, then never again.
 if (!localStorage.getItem('seen_intro')) {
