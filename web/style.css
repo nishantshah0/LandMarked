@@ -1131,11 +1131,13 @@ body {
   margin-top: 5px;
 }
 
-/* the category mark sits on dark now */
-.sheet-head .cat-icon {
-  filter: brightness(0) invert(1);
-  opacity: 0.9;
-}
+/* The category glyphs already carry their own dark glass body, gradient and
+   specular highlight — built and verified specifically to hold up on a dark
+   ground (see web/public/brand/category/). brightness(0) invert(1) is the
+   right move for a flat single-colour glyph on dark, but applied here it
+   crushes the whole badge to a flat white circle and destroys the thing that
+   makes it read as glass rather than a dot. No filter needed: it was
+   designed for exactly this background already. */
 
 /* ---------- NEXT STOP readout ---------- */
 
