@@ -135,7 +135,26 @@ export interface CityColour {
   paintingKey: string | null
 }
 
+/** What the neighbourhood is made of, measured from the OpenStreetMap corpus.
+ *  Real from the first second — it needs no photographs. */
+export interface CorpusStats {
+  total: number
+  byCategory: { category: string; count: number }[]
+  byTier: { tier: number; count: number }[]
+  /** which OSM tags supply real grounding, and how often */
+  grounding: { tag: string; count: number }[]
+  /** share of places that say anything specific about themselves, 0..1 */
+  groundedShare: number
+  withWikipedia: number
+  oldest: { name: string; year: number } | null
+  walkBands: { label: string; count: number }[]
+  medianSpacingM: number
+  questionsWritten: number
+  questionsPlaceScoped: number
+}
+
 export interface DashStats {
+  corpus: CorpusStats
   totalClaims: number
   activeClaims: number
   players: number

@@ -6,15 +6,14 @@
 // checks alone and the attempt is logged as unverified. A demo must never hinge
 // on someone else's uptime.
 //
-// Claude does the judging; Gemini stands behind it (see server/llm.ts).
+// Claude judges first; Gemini, then OpenAI stand behind it (see server/llm.ts).
 
-import { askJSON } from './llm'
+import { askJSON, providers } from './llm'
 
 const CLAUDE_MODEL = (): string => process.env.VISION_MODEL ?? 'claude-opus-5'
 const GEMINI_MODEL = (): string => process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash'
 
-export const visionEnabled = (): boolean =>
-  (process.env.ANTHROPIC_API_KEY ?? '').length > 0 || (process.env.GEMINI_API_KEY ?? '').length > 0
+export const visionEnabled = (): boolean => providers().length > 0
 
 export interface Verdict {
   checked: boolean
@@ -72,6 +71,7 @@ export async function verifyPhoto(
     maxTokens: 300,
     claudeModel: CLAUDE_MODEL(),
     geminiModel: GEMINI_MODEL(),
+    openaiModel: process.env.OPENAI_VISION_MODEL ?? 'gpt-4o-mini',
     timeoutMs: 12_000,
   })
 

@@ -166,7 +166,64 @@ function countUp(el: HTMLElement, to: number): void {
   step()
 }
 
+/** A labelled bar row. Shared by every corpus breakdown below. */
+function bars(rows: { label: string; n: number }[], suffix = ''): string {
+  const max = Math.max(...rows.map((r) => r.n), 1)
+  return (
+    rows
+      .map(
+        (r) =>
+          `<div class="row"><span class="rl">${r.label}</span>` +
+          `<span class="rb"><i style="width:${Math.max((r.n / max) * 100, 2)}%"></i></span>` +
+          `<span class="rn">${r.n}${suffix}</span></div>`,
+      )
+      .join('') || '<p class="none">nothing yet</p>'
+  )
+}
+
+/** Prettify an OSM tag key for a human: building:architecture → architecture. */
+function tagLabel(tag: string): string {
+  const t = tag.includes(':') ? tag.slice(tag.indexOf(':') + 1) : tag
+  return t.replace(/_/g, ' ').replace(/name$/, '').trim()
+}
+
+const TIER_NAME: Record<number, string> = { 1: 'Standard', 2: 'Landmark', 3: 'Iconic' }
+
+function renderCorpus(c: DashStats['corpus']): void {
+  if (c.total === 0) return
+
+  const pct = Math.round(c.groundedShare * 100)
+  $('corpusTop').innerHTML =
+    `<span class="ct"><i>places on the map</i><b>${c.total.toLocaleString()}</b></span>` +
+    `<span class="ct"><i>say something specific</i><b>${pct}%</b></span>` +
+    `<span class="ct"><i>with a Wikipedia article</i><b>${c.withWikipedia}</b></span>` +
+    `<span class="ct"><i>median spacing</i><b>${c.medianSpacingM} m</b></span>` +
+    (c.oldest
+      ? `<span class="ct"><i>oldest datable</i><b>${c.oldest.year}</b><em>${c.oldest.name}</em></span>`
+      : '')
+
+  $('corpusCats').innerHTML = bars(
+    c.byCategory.map((x) => ({ label: x.category, n: x.count })),
+  )
+  $('corpusGround').innerHTML = bars(
+    c.grounding.slice(0, 8).map((x) => ({ label: tagLabel(x.tag), n: x.count })),
+  )
+  $('corpusWalk').innerHTML = bars(c.walkBands.map((x) => ({ label: x.label, n: x.count })))
+
+  const general = c.questionsWritten - c.questionsPlaceScoped
+  $('corpusQ').innerHTML =
+    bars([
+      { label: 'about this exact place', n: c.questionsPlaceScoped },
+      { label: 'about its category', n: general },
+      { label: 'no question yet', n: Math.max(0, c.total - c.questionsWritten) },
+    ]) +
+    `<p class="sub tight" style="margin-top:8px">` +
+    `${c.byTier.map((t) => `${t.count} ${TIER_NAME[t.tier] ?? t.tier}`).join(' · ')}` +
+    `</p>`
+}
+
 function render(stats: DashStats, standings: Standings): void {
+  renderCorpus(stats.corpus)
   const city = stats.city
 
   $('cityPalette').innerHTML = city.palette.length
