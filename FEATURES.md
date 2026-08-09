@@ -34,7 +34,7 @@ Everything here is shipped and verifiable on the live site.
 - Two real datasets on one public dashboard: the corpus (4,235 places — what kinds, which OSM tags ground them, Wikipedia coverage, oldest datable structure, median spacing) and the archive (the live neighbourhood palette and everything below)
 - Hand-drawn visualizations, no chart library: the day as a 24-segment colour clock, distance-from-venue as concentric rings, the corpus as one ink-shade DNA strip — colour on screen is reserved for photographed colour
 - A live claim feed that lands new rows while you watch, a geographic heatmap, verification pass rate + confidence by tier, refusal reasons, claims-over-time, standings, most contested, colour extremes
-- The honesty policy as a chart: 1,233 place-scoped vs 3,002 category-scoped questions — where the record had facts, and where we refused to invent them
+- The honesty policy as a chart: 138 place-scoped, 353 category-scoped, and 3,744 left blank — where the record had facts, and where we refused to invent them
 - Raw dataset public at /api/state
 - Honest empty states; nothing fabricated or hardcoded
 

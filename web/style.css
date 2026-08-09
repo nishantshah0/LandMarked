@@ -288,7 +288,7 @@ body {
   border: 1.5px solid #fff;
 }
 
-.me {
+#map .me {
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -962,7 +962,7 @@ body {
 
 /* ---------------- standings ---------------- */
 
-.boardtitle {
+.sheet .boardtitle {
   font-family: var(--serif);
   font-size: 23px;
   margin-bottom: 12px;
@@ -1249,7 +1249,7 @@ body {
 /* ---------- tile-block section headings ---------- */
 
 .archive-h,
-.boardtitle {
+.sheet .boardtitle {
   font-family: var(--display);
   font-weight: 800;
   letter-spacing: 0.14em;
@@ -1267,7 +1267,7 @@ body {
   margin: 20px 0 10px;
 }
 
-.boardtitle {
+.sheet .boardtitle {
   font-size: 15px;
   border-bottom: 3px solid var(--blind);
   padding-bottom: 7px;
@@ -1410,7 +1410,7 @@ body {
 }
 
 .top-right {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   justify-content: flex-end;
   min-width: 0;
   overflow-x: auto;
@@ -1454,7 +1454,6 @@ body {
 :where(button, a, input, summary, [tabindex]):focus-visible {
   outline: 2.5px solid var(--signal);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 /* On the dark header the yellow alone can sit too close to the ground —
@@ -1467,6 +1466,5 @@ body {
 
 /* The map pins are round, so a rectangular ring reads as a mistake. */
 .pin:focus-visible {
-  border-radius: 50%;
   outline-offset: 3px;
 }

@@ -33,10 +33,10 @@ the point.
 **1:15 — one data beat, laptop.**
 
 > "Every claim attempt is logged with its reason — that's our real production
-> accuracy, not a sample. And the questions on all 4,235 places: **1,233** are
-> about the exact spot, because the record had real facts; **3,002** are about
-> the category, because inventing a fact about a real place is the one thing
-> we won't ship. Our honesty policy is a chart."
+> accuracy, not a sample. And the questions: **138** are about the
+> exact spot, **353** about the category — and **3,744 places have no question
+> at all**, because the record had nothing real to ask about and we won't
+> invent one. That biggest bar is us refusing. Our honesty policy is a chart."
 
 **1:30 — close.**
 
@@ -60,4 +60,4 @@ the point.
 
 ## The three numbers to know cold
 
-**4,235** places · **46%** say something specific · **1,233 / 3,002** place-vs-category questions
+**4,235** places · **46%** say something specific · **138 / 353 / 3,744** place · category · honestly blank
