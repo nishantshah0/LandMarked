@@ -756,8 +756,15 @@ interface RouteLine {
 }
 
 async function showRoute(to: string): Promise<void> {
-  if (!here) return
   const info = document.getElementById('routeInfo')
+  if (!here) {
+    // Same honest-unavailable language the claim button already uses on
+    // denial — before this, tapping the button with location off did
+    // nothing visible at all, which reads as a broken button, not a
+    // missing permission.
+    if (info) info.textContent = 'Location needed to draw a route — enable it and try again.'
+    return
+  }
   if (info) info.textContent = 'Finding the way…'
   try {
     const r = (await (
