@@ -13,7 +13,6 @@ import type {
   Photo,
   ServerMsg,
   Standings,
-  SplatResponse,
 } from '../shared/types'
 import { analyse, shrink } from './analyse'
 
@@ -478,10 +477,8 @@ async function openSheet(id: string): Promise<void> {
     ${funFactHtml(l.funFact, l.category)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
-    ${splatHtml(l)}
   `
   wireFunFact()
-  wireSplat(l)
 
   const btn = document.getElementById('claimBtn') as HTMLButtonElement
   btn.onclick = () => {
@@ -701,75 +698,6 @@ function openGate(l: LandmarkState, onPass: () => void): void {
   })
 }
 
-/* ---------------- the place in 3D (§3.9) ---------------- */
-
-function splatHtml(l: LandmarkState): string {
-  if (l.splatState === 'ready' && l.splatUrl) {
-    // Two capture paths land in the same field, so render on its shape. A
-    // remote URL is somebody's hosted capture (Luma) and embeds inline; a
-    // local path is a model we hold and serve, opened in our own viewer.
-    const hosted = /^https?:\/\//i.test(l.splatUrl)
-    if (hosted) {
-      return (
-        `<h3 class="archive-h">Walk around it — 3D, built from photographs</h3>` +
-        `<iframe class="splat-frame" src="${l.splatUrl}" loading="lazy" allow="fullscreen" title="3D model of ${l.name}"></iframe>`
-      )
-    }
-    return (
-      `<div class="splat ready">` +
-      `<b>This place exists in 3D.</b>` +
-      `<span>Reconstructed from ${l.splatPhotos} of its photographs.</span>` +
-      `<a class="claim" href="/splat.html?id=${encodeURIComponent(l.id)}">Walk around it →</a>` +
-      `</div>`
-    )
-  }
-  if (l.photoCount === 0) return ''
-  if (l.splatState === 'pending') {
-    return `<div class="splat"><b>Rebuilding this place in 3D…</b><span>Takes a few minutes. It will appear here.</span></div>`
-  }
-  if (l.splatNeeds > 0) {
-    const pct = Math.round(((l.photoCount || 0) / (l.photoCount + l.splatNeeds)) * 100)
-    return (
-      `<div class="splat">` +
-      `<b>${l.splatNeeds} more photograph${l.splatNeeds === 1 ? '' : 's'} until this place can be rebuilt in 3D</b>` +
-      `<span class="splat-bar"><i style="width:${pct}%"></i></span>` +
-      `<span>Shoot it from a different angle than the ones above.</span>` +
-      `</div>`
-    )
-  }
-  return (
-    `<div class="splat">` +
-    `<b>Enough photographs to rebuild this place in 3D.</b>` +
-    `<span>${l.photoCount} images, from ${l.claimCount} visit${l.claimCount === 1 ? '' : 's'}.</span>` +
-    `<button id="splatBtn" class="claim">Build the 3D model</button>` +
-    `<a class="splat-dl" href="/api/landmark/${encodeURIComponent(l.id)}/photos.zip">or download the ${l.photoCount} photos</a>` +
-    `<p id="splatMsg" class="splat-msg"></p>` +
-    `</div>`
-  )
-}
-
-function wireSplat(l: LandmarkState): void {
-  const btn = document.getElementById('splatBtn') as HTMLButtonElement | null
-  if (!btn) return
-  btn.onclick = async () => {
-    btn.disabled = true
-    btn.textContent = 'Starting…'
-    const msg = document.getElementById('splatMsg')
-    try {
-      const r = (await (
-        await fetch(`/api/landmark/${encodeURIComponent(l.id)}/generate-splat`, { method: 'POST' })
-      ).json()) as SplatResponse
-      if (msg) msg.textContent = r.message
-      btn.textContent = r.ok ? 'Reconstructing…' : 'Build the 3D model'
-      btn.disabled = r.ok
-    } catch {
-      if (msg) msg.textContent = 'Could not reach the server.'
-      btn.disabled = false
-      btn.textContent = 'Build the 3D model'
-    }
-  }
-}
-
 /* ---------------- walking route (§3.10) ---------------- */
 
 interface RouteLine {
@@ -963,13 +891,6 @@ function connect(): void {
       paintColourbar(m.stats.city.palette)
       standings = m.standings
       if (!$('board').hasAttribute('hidden')) paintBoard()
-    } else if (m.t === 'splat') {
-      const l = landmarks.find((x) => x.id === m.landmarkId)
-      // The pin carries no splat fields — sheets read them from
-      // /api/landmark/:id — so a finished model only needs the open sheet
-      // reopened to show it.
-      void l
-      if (openId === m.landmarkId && m.state !== 'pending') void openSheet(m.landmarkId)
     }
   }
   ws.onclose = () => setTimeout(connect, 1500)

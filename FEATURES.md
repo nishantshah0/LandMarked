@@ -19,8 +19,6 @@ Everything here is shipped and verifiable on the live site.
 - The colour of the neighbourhood: live blended palette + brightness/saturation/sky measured from every photo (pixel arithmetic, no model)
 - Before/after reveal on success: your photo, and the neighbourhood's palette before vs after you
 - Every place tinted by its own archive's colour
-- **3D reconstructions on any pin**, two ways: a ~60-second Luma phone capture attached by URL and embedded inline, or the archive path below
-- **The archive becomes geometry:** once a place crosses 8 photographs, its whole archive exports as one zip (dependency-free ZIP writer) — the exact input a photogrammetry pipeline takes — and the resulting 3D Gaussian Splat is served from our own disk and rendered in our own Three.js + Spark viewer at `/splat.html?id=…`, with no iframe, CDN or third-party player. Generation between those two halves is pluggable: point `SPLAT_API_URL` at any zip→splat service and the in-app button runs it end to end; otherwise the same pipeline runs by hand in three commands and lands in the same viewer. (Luma's Capture API, the obvious generator, was discontinued and its client archived in Sept 2024 — so we shipped the two halves that are ours rather than claim an automated pipeline that doesn't exist.)
 
 ## Verification (the transformation)
 - Server-recomputed GPS distance (client never trusted); accuracy gate with helpful errors

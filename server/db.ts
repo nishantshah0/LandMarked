@@ -2,13 +2,12 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import type { Tier } from '../shared/config'
-import type { Claim, Landmark, Photo, RejectReason, SplatState } from '../shared/types'
+import type { Claim, Landmark, Photo, RejectReason } from '../shared/types'
 
 /** Overridable so the labeled specimen instance keeps its own separate data. */
 export const DATA_DIR = process.env.SEEN_DATA_DIR ?? 'data'
 
 mkdirSync(join(DATA_DIR, 'photos'), { recursive: true })
-mkdirSync(join(DATA_DIR, 'splats'), { recursive: true })
 
 const DB_PATH = join(DATA_DIR, 'seen.db')
 let db = new DatabaseSync(DB_PATH)
@@ -44,10 +43,6 @@ db.exec(`
 for (const col of [
   'fun_fact TEXT',
   'osm_facts TEXT',
-  'splat_url TEXT',
-  "splat_state TEXT NOT NULL DEFAULT 'none'",
-  'splat_photos INTEGER NOT NULL DEFAULT 0',
-  'splat_updated_at INTEGER',
 ]) {
   try {
     db.exec(`ALTER TABLE landmarks ADD COLUMN ${col}`)
@@ -84,7 +79,7 @@ export function landmarkCount(): number {
 
 export function insertLandmarks(list: Landmark[]): void {
   // COALESCE keeps anything already earned: a reseed must not wipe a landmark's
-  // photo count, its generated question or its 3D model just because the fresh
+  // photo count or its generated question just because the fresh
   // Overpass row does not carry them.
   const st = db.prepare(
     `INSERT INTO landmarks (id,name,lat,lng,tier,category,description,osm_facts,photo_count,fun_fact)
@@ -128,9 +123,6 @@ interface LRow {
   photo_count: number
   fun_fact: string | null
   osm_facts: string | null
-  splat_url: string | null
-  splat_state: string | null
-  splat_photos: number | null
 }
 
 export function allLandmarks(): Landmark[] {
@@ -146,43 +138,12 @@ export function allLandmarks(): Landmark[] {
     osmFacts: r.osm_facts ?? null,
     photoCount: Number(r.photo_count),
     funFact: r.fun_fact ?? null,
-    splatUrl: r.splat_url ?? null,
-    splatState: (r.splat_state as SplatState | null) ?? 'none',
-    splatPhotos: Number(r.splat_photos ?? 0),
   }))
 }
 
 export function setFunFact(id: string, json: string): void {
   guard(() => {
     db.prepare('UPDATE landmarks SET fun_fact = ? WHERE id = ?').run(json, id)
-  })
-}
-
-/* ---------------- 3D reconstruction ---------------- */
-
-export function setSplat(
-  id: string,
-  state: SplatState,
-  url: string | null,
-  photos: number,
-): void {
-  guard(() => {
-    db.prepare(
-      'UPDATE landmarks SET splat_state = ?, splat_url = ?, splat_photos = ?, splat_updated_at = ? WHERE id = ?',
-    ).run(state, url, photos, Date.now(), id)
-  })
-}
-
-/** Attach an already-hosted model (a Luma embed URL) — the phone-capture path.
- *
- *  This must move splat_state to 'ready' as well as writing the URL: the sheet
- *  renders on state, not on the URL being non-null, so setting one without the
- *  other stores a model that never appears. */
-export function setSplatUrl(id: string, url: string): void {
-  guard(() => {
-    db.prepare(
-      "UPDATE landmarks SET splat_url = ?, splat_state = 'ready', splat_updated_at = ? WHERE id = ?",
-    ).run(url, Date.now(), id)
   })
 }
 

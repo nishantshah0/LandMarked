@@ -64,7 +64,6 @@ export const CFG = {
   triviaGateMinTier: 3,
   /** Photographs a place needs before its archive is worth reconstructing.
    *  Structure-from-motion wants many angles; below this it will not solve. */
-  splatMinPhotos: 8,
 } as const
 
 export type Tier = 1 | 2 | 3

@@ -9,20 +9,16 @@
     "start": "NODE_ENV=production tsx server/index.ts",
     "seed": "tsx server/seed.ts",
     "funfacts": "tsx server/funfacts.ts",
-    "splat": "tsx server/splat.ts",
     "snapshot": "tsx server/snapshot.ts",
     "specimen": "SEEN_SPECIMEN=1 SEEN_DATA_DIR=data-specimen PORT=8788 tsx server/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@sparkjsdev/spark": "^2.1.0",
     "maplibre-gl": "^5.0.0",
-    "three": "^0.185.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@types/three": "^0.185.4",
     "@types/ws": "^8.5.12",
     "concurrently": "^9.1.0",
     "tsx": "^4.19.2",

@@ -153,9 +153,6 @@ async function main(): Promise<void> {
       osmFacts: factsOf(el.tags ?? {}),
       photoCount: 0,
       funFact: null,
-      splatUrl: null,
-      splatState: 'none',
-      splatPhotos: 0,
     })
   }
 
@@ -192,9 +189,6 @@ async function main(): Promise<void> {
     osmFacts: null,
     photoCount: 0,
     funFact: JSON.stringify(VENUE_TRIVIA),
-    splatUrl: null,
-    splatState: 'none',
-    splatPhotos: 0,
   })
 
   insertLandmarks(near)
