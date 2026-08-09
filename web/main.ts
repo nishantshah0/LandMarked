@@ -124,18 +124,28 @@ map.on('load', initMapLayers)
 // 'load' fires once and only once, and if it is ever missed — a style swap
 // landing mid-initialisation, a backgrounded tab, a slow first paint — then
 // installClusterLayers() never runs and the map sits blank forever: no pins,
-// no clusters, no error. Observed in practice, not theoretical. This polls
-// briefly as a safety net and stops as soon as the map is up; on a normal
-// load initMapLayers() has already run and every call here is a no-op.
+// no clusters, no error. Observed in practice on this project, not
+// theoretical: the style finished loading and the load event never arrived.
+//
+// 'styledata' fires whenever style data lands, including after a setStyle,
+// so it catches exactly the case 'load' misses. initMapLayers() is idempotent
+// and gates on isStyleLoaded(), so on a normal startup the load event wins
+// and every later call is a no-op.
+map.on('styledata', initMapLayers)
+
+// Final backstop, deliberately unbounded rather than a fixed number of tries.
+// An earlier version gave up after ten seconds and the style finished loading
+// after that, which left the map blank anyway — a timeout here just converts
+// "slow" into "broken". This stops the moment the map is up, and the interval
+// is long enough to cost nothing while it waits.
 {
-  let tries = 0
   const retry = setInterval(() => {
-    if (mapReady || tries++ > 25) {
+    if (mapReady) {
       clearInterval(retry)
       return
     }
     initMapLayers()
-  }, 400)
+  }, 500)
 }
 map.on('error', (e) => console.warn('[map]', e.error?.message ?? e))
 map.on('moveend', syncMarkers)
