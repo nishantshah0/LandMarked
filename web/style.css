@@ -1417,3 +1417,34 @@ body {
 .top-right {
   justify-content: flex-start;
 }
+
+/* ---------- keyboard focus ----------
+   Before this the stylesheet had exactly one :focus rule in it, so tabbing
+   through the map fell back to the browser default — which is invisible
+   against the dark destination-blind header and the near-black buttons.
+
+   :focus-visible rather than :focus so this only appears for keyboard and
+   assistive-tech users; clicking a button with a mouse still shows nothing,
+   which is what people expect. The ring is the signage yellow already used
+   for live/attention state, so it reads as part of the same system rather
+   than a browser artifact. */
+
+:where(button, a, input, summary, [tabindex]):focus-visible {
+  outline: 2.5px solid var(--signal);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* On the dark header the yellow alone can sit too close to the ground —
+   a thin dark halo underneath keeps it legible on both. */
+.sheet-head :focus-visible,
+.pin:focus-visible {
+  outline-color: var(--signal);
+  box-shadow: 0 0 0 5px rgba(23, 24, 28, 0.55);
+}
+
+/* The map pins are round, so a rectangular ring reads as a mistake. */
+.pin:focus-visible {
+  border-radius: 50%;
+  outline-offset: 3px;
+}
