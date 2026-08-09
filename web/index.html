@@ -10,7 +10,7 @@
       property="og:description"
       content="Claim real places near you with one photo. The place keeps every photo forever — and together they show what colour the neighbourhood is right now."
     />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2317181c'/><circle cx='16' cy='14' r='6' fill='none' stroke='%23f7f5ef' stroke-width='2.5'/><circle cx='16' cy='14' r='2' fill='%23e5533d'/><path d='M16 21 L16 27' stroke='%23f7f5ef' stroke-width='2.5'/></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2317181c'/><circle cx='16' cy='16' r='9.5' fill='none' stroke='%23f7f5ef' stroke-width='3'/><rect x='3.5' y='13' width='25' height='6' fill='%23f8c300'/></svg>" />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="/brand/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -34,8 +34,9 @@
 
     <header class="top">
       <div class="brand">
-        <!-- Drop a Reve-generated wordmark at web/public/brand/mark.svg and it
-             replaces the text automatically; without it, the text ships. -->
+        <!-- web/public/brand/mark.svg is the roundel lockup; .brand:has(img)
+             swaps out the type when it loads. Delete the file and the text
+             below ships instead — the header cannot end up empty. -->
         <img id="brandMark" src="/brand/mark.svg" alt="LandMarked" onerror="this.remove()" />
         LandMarked<em>every photo anyone took here</em>
       </div>

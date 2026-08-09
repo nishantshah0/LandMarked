@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90" width="90" height="90" role="img" aria-label="LandMarked">
+  <!-- One-colour reduction: below about 40px the three strips merge into a
+       muddy band, so anything small — favicons, stamps, a printed sticker,
+       anywhere the palette can't be trusted — uses this. currentColor so it
+       can be dropped inline and inherit whatever ground it lands on. -->
+  <g fill="currentColor" stroke="currentColor" color="#17181C">
+    <circle cx="45" cy="45" r="32" fill="none" stroke-width="8"/>
+    <rect x="0" y="36" width="90" height="18" stroke="none"/>
+  </g>
+</svg>

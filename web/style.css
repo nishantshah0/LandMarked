@@ -1379,6 +1379,27 @@ body {
   margin-top: 3px;
 }
 
+/* The roundel lockup lands in the same width budget as the type it replaces:
+   at 24px tall it draws 142px, against ~118px for the word set at 20px. The
+   original 30px would have drawn 178px and reopened the problem above. */
+.brand img {
+  height: 24px;
+}
+
+/* mark.svg is the wordmark alone, not a full lockup, so the strapline still
+   has a job — it stays under the drawn mark instead of being suppressed with
+   the type it stands in for. (font-size: 0 on .brand can't collapse it; the
+   rule above gives em its own size.) */
+.brand:has(img) em {
+  display: block;
+}
+
+@media (max-width: 560px) {
+  .brand:has(img) em {
+    display: none;
+  }
+}
+
 /* On a phone the wordmark alone carries it; the tagline is the first thing to
    go rather than the chips, which are navigation. */
 @media (max-width: 560px) {

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 178 30" width="142" height="24" role="img" aria-label="LandMarked">
+  <!-- Header lockup: roundel + wordmark. The type is deliberately the same
+       setting the live header uses (the display face, 800, 0.04em, mixed case),
+       so
+       swapping this file in for the text changes the drawing, not the voice.
+       Set as <text> rather than outlines: Helvetica Neue is on every phone
+       this runs on and Arial is the fallback everywhere else, and keeping it
+       live means the wordmark stays editable in a text editor at 2am.
+
+       Roundel is logo.svg at a third scale. The clear space either side of
+       the bar overhang is the mark's own margin — don't add more. -->
+  <g transform="scale(0.3333)">
+    <circle cx="45" cy="45" r="32" fill="none" stroke="#17181C" stroke-width="8"/>
+    <rect x="0" y="36" width="90" height="6" fill="#E5533D"/>
+    <rect x="0" y="42" width="90" height="6" fill="#F8C300"/>
+    <rect x="0" y="48" width="90" height="6" fill="#3F7D49"/>
+    <rect x="0" y="36" width="11" height="18" fill="#17181C"/>
+    <rect x="79" y="36" width="11" height="18" fill="#17181C"/>
+  </g>
+  <text x="38" y="22.8" fill="#17181C" letter-spacing="0.88"
+        font-family="'Helvetica Neue',Helvetica,Arial,sans-serif"
+        font-weight="800" font-size="22">LandMarked</text>
+</svg>
