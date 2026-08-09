@@ -91,8 +91,14 @@ const map = new maplibregl.Map({
   attributionControl: { compact: true },
 })
 map.once('error', () => {
-  // if positron ever disappears, fall back to the default style rather than a blank map
-  map.setStyle('https://tiles.openfreemap.org/styles/liberty')
+  // Only fall back if the *style itself* never came up. This used to fire on
+  // any error at all — including a single missing tile, which happens
+  // routinely — and swapping the style mid-initialisation can land while the
+  // map is still setting up, leaving it permanently blank with no pins and no
+  // error anyone can see.
+  if (!map.isStyleLoaded()) {
+    map.setStyle('https://tiles.openfreemap.org/styles/liberty')
+  }
 })
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right')
 // debug handle; harmless in production
@@ -103,11 +109,34 @@ let meMarker: maplibregl.Marker | null = null
 // Markers cannot be projected until the style is up. The socket often beats it,
 // so anything that arrives early waits here rather than landing at 0,0.
 let mapReady = false
-map.on('load', () => {
+
+/** Idempotent: safe to call from the load event, from the retry below, or
+ *  both. Everything the map draws hangs off this running exactly once. */
+function initMapLayers(): void {
+  if (mapReady || !map.isStyleLoaded()) return
   mapReady = true
   installClusterLayers()
   syncMarkers()
-})
+}
+
+map.on('load', initMapLayers)
+
+// 'load' fires once and only once, and if it is ever missed — a style swap
+// landing mid-initialisation, a backgrounded tab, a slow first paint — then
+// installClusterLayers() never runs and the map sits blank forever: no pins,
+// no clusters, no error. Observed in practice, not theoretical. This polls
+// briefly as a safety net and stops as soon as the map is up; on a normal
+// load initMapLayers() has already run and every call here is a no-op.
+{
+  let tries = 0
+  const retry = setInterval(() => {
+    if (mapReady || tries++ > 25) {
+      clearInterval(retry)
+      return
+    }
+    initMapLayers()
+  }, 400)
+}
 map.on('error', (e) => console.warn('[map]', e.error?.message ?? e))
 map.on('moveend', syncMarkers)
 map.on('zoomend', syncMarkers)
@@ -148,6 +177,9 @@ function pinsGeoJSON(): FeatureCollection {
 /** Clustered counts, drawn by the GPU, for every zoom below PIN_ZOOM. Tapping a
  *  cluster zooms into it, which is how you get from "the GTA" to a street. */
 function installClusterLayers(): void {
+  // Guarded because initMapLayers() can now be reached from two paths (the
+  // load event and its retry); adding an existing source throws.
+  if (map.getSource('pins')) return
   map.addSource('pins', {
     type: 'geojson',
     data: pinsGeoJSON(),
