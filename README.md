@@ -77,7 +77,18 @@ npm run dev            # map on :5173, server on :8787
 
 **Before the event:** set `VENUE` in `shared/config.ts` to the actual venue coordinates, delete `data/`, and reseed. The venue itself is a claimable tier-3 landmark with a generous indoor radius — that's the judge-demo moment.
 
-**Deploy:** the included `Dockerfile` and `render.yaml` deploy in a few minutes on Render's free tier. HTTPS is required — browsers only expose camera and precise geolocation on secure origins. Mount the disk at `/app/data` or the archive resets on redeploy.
+**Deploy:** the included `Dockerfile` and `render.yaml` run on Render's **free** plan as configured. HTTPS is required and automatic — browsers only expose camera and precise geolocation on secure origins.
+
+The free plan has no persistent disk, which would normally be fatal for a project whose point is a permanent archive. It isn't, because `seed/landmarks.db` is committed and baked into the image: every cold start copies it back, so all 4,235 landmarks are present within seconds and the boot never calls Overpass. Measured on a container capped at the free plan's 512 MB and 0.1 CPU — **healthy in 10 s, steady at ~120 MB**.
+
+What the free plan does cost you: the *archive* is ephemeral. Claims, photographs and 3D models live in `/app/data` and reset when the instance restarts, redeploys, or spins down after ~15 minutes idle. Two consequences worth planning around:
+
+- **Keep it awake for judging.** Ping `/healthz` every ~10 minutes (cron-job.org, UptimeRobot — both free) or the first visitor waits ~1 minute for a cold start.
+- **Don't redeploy once real people have claimed things.**
+
+For a permanent archive, set `plan: starter` in `render.yaml` (~$7/mo, cancellable) and uncomment the `disk:` block — landmarks behave identically either way.
+
+Deploying from a repo you don't own: Render's **"Public Git repository"** option takes the URL directly, needing no OAuth or collaborator rights. Blueprints need a connected provider, so set the service up in the UI instead — Docker runtime, health check `/healthz`, and the env vars listed in `render.yaml`.
 
 Keys live in `.env` (gitignored, kept out of the image by `.dockerignore`); see `.env.example` for what each one switches on. All are optional — `ANTHROPIC_API_KEY` enables vision verification and question generation, `GEMINI_API_KEY` is the fallback behind it, and `ADMIN_TOKEN` enables attaching a 3D model over HTTP. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
 

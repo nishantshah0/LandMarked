@@ -2,19 +2,32 @@ services:
   - type: web
     name: seen
     runtime: docker
-    # Starter (~$7/mo, cancel after the event) because persistent disks aren't
-    # available on Render's free tier — and without the disk, every restart or
-    # redeploy wipes the archive, which is the whole product.
+
+    # Free tier: $0, 512 MB, 0.1 CPU, and NO persistent disk.
     #
-    # Truly-free variant: change plan to "free" AND delete the disk block below.
-    # Accept that data resets on restart and the service sleeps after ~15 min
-    # idle (first visitor then waits ~1 min). Don't redeploy after real people
-    # have claimed.
-    plan: starter
+    # No disk means /app/data is ephemeral — the archive (claims, photographs,
+    # 3D models) resets whenever the instance restarts or spins down. Landmarks
+    # do not: seed/landmarks.db is baked into the image and copied back on every
+    # cold start, so the map is always fully populated in seconds and the boot
+    # never calls Overpass. That property is what makes free tier usable here.
+    #
+    # Free instances also sleep after ~15 minutes idle, and the next visitor
+    # waits ~1 minute for a cold start. Before judging, keep it awake by pinging
+    # /healthz every ~10 minutes (cron-job.org or UptimeRobot, both free).
+    #
+    # To make the archive permanent instead, switch to `plan: starter` (~$7/mo,
+    # cancellable) and uncomment the disk block at the bottom.
+    plan: free
+
     healthCheckPath: /healthz
+
     envVars:
       - key: PORT
         value: 8787
+      # tsx compiles TypeScript at runtime; cap the heap under the 512 MB limit
+      # so a spike is a tidy GC rather than an OOM kill.
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=384
       # Optional: enables vision verification and question generation. Claude is
       # tried first, Gemini behind it. With neither, claims still pass on the
       # GPS + duplicate-photo checks and are logged as unverified.
@@ -27,11 +40,14 @@ services:
         value: gemini-2.5-flash
       - key: GEMINI_FUNFACT_MODEL
         value: gemini-2.5-flash
-      # Optional: lets you register a finished 3D model over HTTP mid-event
-      # instead of shelling into the box. Any long random string.
+      # Optional: lets you attach a 3D model over HTTP mid-event instead of
+      # shelling into the box. Any long random string.
       - key: ADMIN_TOKEN
         sync: false
-    disk:
-      name: seen-data
-      mountPath: /app/data
-      sizeGB: 1
+
+    # Paid plans only. Uncomment together with `plan: starter` above to make the
+    # photo archive survive restarts.
+    # disk:
+    #   name: seen-data
+    #   mountPath: /app/data
+    #   sizeGB: 1
