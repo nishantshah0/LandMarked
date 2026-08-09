@@ -77,16 +77,13 @@ npm run dev            # map on :5173, server on :8787
 
 **Before the event:** set `VENUE` in `shared/config.ts` to the actual venue coordinates, delete `data/`, and reseed. The venue itself is a claimable tier-3 landmark with a generous indoor radius — that's the judge-demo moment.
 
-**Deploy:** the included `Dockerfile` and `render.yaml` run on Render's **free** plan as configured. HTTPS is required and automatic — browsers only expose camera and precise geolocation on secure origins.
+**Deploy:** the included `Dockerfile` and `render.yaml` stand it up on Render. HTTPS is required and automatic — browsers only expose camera and precise geolocation on secure origins.
 
-The free plan has no persistent disk, which would normally be fatal for a project whose point is a permanent archive. It isn't, because `seed/landmarks.db` is committed and baked into the image: every cold start copies it back, so all 4,235 landmarks are present within seconds and the boot never calls Overpass. Measured on a container capped at the free plan's 512 MB and 0.1 CPU — **healthy in 10 s, steady at ~120 MB**.
+The blueprint uses the **Starter** plan (~$7/mo, cancellable) because it is the cheapest plan with a **persistent disk**, mounted at `/app/data`. Free has no disk, so the photo archive would reset on every restart and spin-down — and a permanent archive is the whole premise here, not a nice-to-have.
 
-What the free plan does cost you: the *archive* is ephemeral. Claims, photographs and 3D models live in `/app/data` and reset when the instance restarts, redeploys, or spins down after ~15 minutes idle. Two consequences worth planning around:
+Landmarks are independent of that disk: `seed/landmarks.db` is committed and baked into the image, so first boot installs all 4,235 of them in seconds and never calls Overpass. Measured on a container capped at the instance's 512 MB — **healthy in 10 s, steady at ~120 MB**. Regenerate the snapshot with `npm run snapshot` after any reseed, and commit it.
 
-- **Keep it awake for judging.** Ping `/healthz` every ~10 minutes (cron-job.org, UptimeRobot — both free) or the first visitor waits ~1 minute for a cold start.
-- **Don't redeploy once real people have claimed things.**
-
-For a permanent archive, set `plan: starter` in `render.yaml` (~$7/mo, cancellable) and uncomment the `disk:` block — landmarks behave identically either way.
+Deploying from a repo you don't own: Render's **"Public Git repository"** option takes the URL directly, needing no OAuth or collaborator rights. Blueprints need a connected provider, so set the service up in the UI instead — Docker runtime, health check `/healthz`, a 1 GB disk at `/app/data`, and the env vars listed in `render.yaml`.
 
 Deploying from a repo you don't own: Render's **"Public Git repository"** option takes the URL directly, needing no OAuth or collaborator rights. Blueprints need a connected provider, so set the service up in the UI instead — Docker runtime, health check `/healthz`, and the env vars listed in `render.yaml`.
 

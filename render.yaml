@@ -3,29 +3,20 @@ services:
     name: seen
     runtime: docker
 
-    # Free tier: $0, 512 MB, 0.1 CPU, and NO persistent disk.
-    #
-    # No disk means /app/data is ephemeral — the archive (claims, photographs,
-    # 3D models) resets whenever the instance restarts or spins down. Landmarks
-    # do not: seed/landmarks.db is baked into the image and copied back on every
-    # cold start, so the map is always fully populated in seconds and the boot
-    # never calls Overpass. That property is what makes free tier usable here.
-    #
-    # Free instances also sleep after ~15 minutes idle, and the next visitor
-    # waits ~1 minute for a cold start. Before judging, keep it awake by pinging
-    # /healthz every ~10 minutes (cron-job.org or UptimeRobot, both free).
-    #
-    # To make the archive permanent instead, switch to `plan: starter` (~$7/mo,
-    # cancellable) and uncomment the disk block at the bottom.
-    plan: free
+    # Starter (~$7/mo, cancellable after the event) because it is the cheapest
+    # plan with a persistent disk. Free has no disk, which would make the photo
+    # archive reset on every restart or spin-down — and a permanent archive is
+    # the entire premise of this project, not a nice-to-have.
+    plan: starter
 
     healthCheckPath: /healthz
 
     envVars:
       - key: PORT
         value: 8787
-      # tsx compiles TypeScript at runtime; cap the heap under the 512 MB limit
-      # so a spike is a tidy GC rather than an OOM kill.
+      # tsx compiles TypeScript at runtime; cap the heap under the instance's
+      # 512 MB so a spike is a tidy GC rather than an OOM kill. Measured steady
+      # state is ~120 MB, so this is headroom, not a squeeze.
       - key: NODE_OPTIONS
         value: --max-old-space-size=384
       # Optional: enables vision verification and question generation. Claude is
@@ -45,9 +36,10 @@ services:
       - key: ADMIN_TOKEN
         sync: false
 
-    # Paid plans only. Uncomment together with `plan: starter` above to make the
-    # photo archive survive restarts.
-    # disk:
-    #   name: seen-data
-    #   mountPath: /app/data
-    #   sizeGB: 1
+    # The archive: sqlite, photographs, and 3D models. Landmarks do not depend
+    # on this — seed/landmarks.db is baked into the image and copied onto the
+    # disk on first boot — but every claim anyone makes does.
+    disk:
+      name: seen-data
+      mountPath: /app/data
+      sizeGB: 1
