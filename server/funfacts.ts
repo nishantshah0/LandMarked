@@ -3,7 +3,7 @@
 //   npm run funfacts -- --gated   only the trivia-gated ones (tier 3)
 //   npm run funfacts -- --limit 50
 //
-// Runs on either provider: OpenAI if OPENAI_API_KEY is set, otherwise Anthropic.
+// Runs on Claude, falling back to Gemini if Claude is unavailable or fails.
 //
 // The whole design here is about specificity without invention. A question like
 // "what are murals usually made of?" is filler — it could be asked at any of the
@@ -25,11 +25,10 @@ import './env' // must stay first — see server/env.ts
 import { CFG } from '../shared/config'
 import type { Landmark } from '../shared/types'
 import { allLandmarks, setFunFact } from './db'
+import { askJSON, providers } from './llm'
 
-const ANTHROPIC_KEY = (): string => process.env.ANTHROPIC_API_KEY ?? ''
-const OPENAI_KEY = (): string => process.env.OPENAI_API_KEY ?? ''
-const ANTHROPIC_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
-const OPENAI_MODEL = (): string => process.env.OPENAI_FUNFACT_MODEL ?? 'gpt-4o-mini'
+const CLAUDE_MODEL = (): string => process.env.FUNFACT_MODEL ?? 'claude-opus-5'
+const GEMINI_MODEL = (): string => process.env.GEMINI_FUNFACT_MODEL ?? 'gemini-2.5-flash'
 
 interface FunFact {
   question: string
@@ -44,9 +43,11 @@ const SYSTEM =
   'any other park, mural or memorial is a failure.\n\n' +
   'Build the question only from the supplied facts. You may use well-known outside knowledge about ' +
   'famous landmarks, but never invent a specific claim about an obscure one.\n\n' +
-  'If the supplied facts contain nothing specific enough — just a name and a generic category — set ' +
-  'grounded to false and leave the other fields empty. Returning nothing is correct and expected for ' +
-  'roughly half of these places; a plausible-sounding invented fact is the worst possible answer.\n\n' +
+  'A Wikipedia extract, an inscription, an artist, a date, a height or a material is ample grounding — ' +
+  'when any of those is supplied, set grounded to true and build the question from it.\n\n' +
+  'Set grounded to false only when the facts really are just a name and a generic category, with no ' +
+  'specific detail to ask about. That is common and returning nothing is the right answer there; a ' +
+  'plausible-sounding invented fact is the worst possible outcome.\n\n' +
   'When grounded: four options, one correct, three plausible but clearly wrong to someone standing ' +
   'there. Put the exact supplying fact in sourceFact.'
 
@@ -123,82 +124,40 @@ interface Result {
   correctIndex: number
 }
 
-async function viaOpenAI(prompt: string, name: string): Promise<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { authorization: `Bearer ${OPENAI_KEY()}`, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      model: OPENAI_MODEL(),
-      max_tokens: 1000,
-      // Structured outputs: the API enforces the shape, so there is no prose to
-      // parse and no "reply with JSON only" plea in the prompt.
-      response_format: {
-        type: 'json_schema',
-        json_schema: { name: 'fun_fact', strict: true, schema: SCHEMA },
-      },
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: prompt },
-      ],
-    }),
+/** Separated from a skip on purpose: "the model had nothing to work with" and
+ *  "no provider answered" look identical in the output but mean opposite things
+ *  — one is the honesty rule working, the other is a broken run. */
+type Outcome =
+  | { kind: 'written'; fact: FunFact }
+  | { kind: 'skipped' }
+  | { kind: 'unavailable' }
+
+async function generate(l: Landmark, grounding: string): Promise<Outcome> {
+  const { data: out } = await askJSON<Result>({
+    system: SYSTEM,
+    text: `Here is everything known about this place:\n\n${grounding}`,
+    schema: SCHEMA,
+    maxTokens: 1000,
+    claudeModel: CLAUDE_MODEL(),
+    geminiModel: GEMINI_MODEL(),
+    timeoutMs: 30_000,
   })
-  if (!res.ok) {
-    console.warn(`  ! openai ${res.status} for "${name}"`)
-    return ''
-  }
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-  return body.choices?.[0]?.message?.content ?? ''
-}
+  if (!out) return { kind: 'unavailable' }
 
-async function viaAnthropic(prompt: string, name: string): Promise<string> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_KEY(),
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL(),
-      max_tokens: 1000,
-      output_config: { format: { type: 'json_schema', schema: SCHEMA } },
-      system: SYSTEM,
-      messages: [{ role: 'user', content: prompt }],
-    }),
-  })
-  if (!res.ok) {
-    console.warn(`  ! anthropic ${res.status} for "${name}"`)
-    return ''
-  }
-  const body = (await res.json()) as { content?: { type: string; text?: string }[] }
-  return body.content?.find((c) => c.type === 'text')?.text ?? ''
-}
-
-async function generate(l: Landmark, grounding: string): Promise<FunFact | null> {
-  const prompt = `Here is everything known about this place:\n\n${grounding}`
-  const text = OPENAI_KEY() ? await viaOpenAI(prompt, l.name) : await viaAnthropic(prompt, l.name)
-  if (!text) return null
-
-  let out: Result
-  try {
-    out = JSON.parse(text) as Result
-  } catch {
-    return null
-  }
-
-  if (!out.grounded) return null
-  if (!out.question || !Array.isArray(out.options) || out.options.length < 3) return null
-  if (!out.options.every((o) => typeof o === 'string' && o.length > 0)) return null
+  if (!out.grounded) return { kind: 'skipped' }
+  if (!out.question || !Array.isArray(out.options) || out.options.length < 3) return { kind: 'skipped' }
+  if (!out.options.every((o) => typeof o === 'string' && o.length > 0)) return { kind: 'skipped' }
   const i = Number(out.correctIndex)
-  if (!Number.isInteger(i) || i < 0 || i >= out.options.length) return null
+  if (!Number.isInteger(i) || i < 0 || i >= out.options.length) return { kind: 'skipped' }
 
-  return { question: out.question, options: out.options, correctIndex: i }
+  return { kind: 'written', fact: { question: out.question, options: out.options, correctIndex: i } }
 }
 
 async function main(): Promise<void> {
-  if (!OPENAI_KEY() && !ANTHROPIC_KEY()) {
+  const have = providers()
+  if (have.length === 0) {
     console.log(
-      '[funfacts] no OPENAI_API_KEY or ANTHROPIC_API_KEY — skipping (the app works fine without them)',
+      '[funfacts] no ANTHROPIC_API_KEY or GEMINI_API_KEY — skipping (the app works fine without them)',
     )
     process.exit(0)
   }
@@ -216,27 +175,32 @@ async function main(): Promise<void> {
     .slice(0, Number.isFinite(limit) ? limit : undefined)
 
   const gated = todo.filter((l) => l.tier >= CFG.triviaGateMinTier).length
-  const model = OPENAI_KEY() ? OPENAI_MODEL() : ANTHROPIC_MODEL()
-  console.log(`[funfacts] ${todo.length} landmarks to try (${gated} gated) · model ${model}`)
+  const chain = have.map((p) => (p === 'claude' ? CLAUDE_MODEL() : GEMINI_MODEL())).join(' → ')
+  console.log(`[funfacts] ${todo.length} landmarks to try (${gated} gated) · ${chain}`)
 
   let written = 0
   let skipped = 0
+  let unavailable = 0
   for (const l of todo) {
     const grounding = await groundingFor(l)
-    const f = await generate(l, grounding)
-    if (f) {
-      setFunFact(l.id, JSON.stringify(f))
+    const out = await generate(l, grounding)
+    if (out.kind === 'written') {
+      setFunFact(l.id, JSON.stringify(out.fact))
       written++
-      console.log(`  ✓ ${l.name} — ${f.question}`)
-    } else {
+      console.log(`  ✓ ${l.name} — ${out.fact.question}`)
+    } else if (out.kind === 'skipped') {
       skipped++
       console.log(`  · ${l.name} — nothing specific enough, left without a question`)
+    } else {
+      unavailable++
+      console.log(`  ! ${l.name} — no provider answered, not attempted`)
     }
     await new Promise((r) => setTimeout(r, 250)) // gentle pacing
   }
 
   console.log(
-    `[funfacts] ${written} written, ${skipped} skipped as too thin to ask about honestly`,
+    `[funfacts] ${written} written · ${skipped} skipped as too thin to ask about honestly` +
+      (unavailable ? ` · ${unavailable} not attempted (no provider answered)` : ''),
   )
   process.exit(0)
 }

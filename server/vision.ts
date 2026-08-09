@@ -1,17 +1,20 @@
 // Optional second opinion on whether a photo shows the place it claims to.
 //
 // Deliberately optional: GPS and the perceptual-hash check are deterministic and
-// run first, so the game is fully playable with no API key at all. If the key is
-// missing or the call fails, the claim passes on the deterministic checks alone
-// and the attempt is logged as unverified. A demo must never hinge on someone
-// else's uptime.
+// run first, so the game is fully playable with no API key at all. If no key is
+// configured, or every provider fails, the claim passes on the deterministic
+// checks alone and the attempt is logged as unverified. A demo must never hinge
+// on someone else's uptime.
+//
+// Claude does the judging; Gemini stands behind it (see server/llm.ts).
 
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY ?? ''
-const OPENAI_KEY = process.env.OPENAI_API_KEY ?? ''
-const ANTHROPIC_MODEL = process.env.VISION_MODEL ?? 'claude-sonnet-5'
-const OPENAI_MODEL = process.env.OPENAI_VISION_MODEL ?? 'gpt-4o-mini'
+import { askJSON } from './llm'
 
-export const visionEnabled = (): boolean => ANTHROPIC_KEY.length > 0 || OPENAI_KEY.length > 0
+const CLAUDE_MODEL = (): string => process.env.VISION_MODEL ?? 'claude-opus-5'
+const GEMINI_MODEL = (): string => process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash'
+
+export const visionEnabled = (): boolean =>
+  (process.env.ANTHROPIC_API_KEY ?? '').length > 0 || (process.env.GEMINI_API_KEY ?? '').length > 0
 
 export interface Verdict {
   checked: boolean
@@ -31,99 +34,23 @@ const SYSTEM =
   'You verify whether a photograph was plausibly taken at a specific real-world place. ' +
   'Be generous: players photograph details, interiors, signage and odd angles, not postcard views. ' +
   'Reject only if the photo clearly could not have been taken at or near this place — ' +
-  'for example a screenshot, a selfie indoors when the place is a park, or an obviously unrelated subject. ' +
-  'Reply with JSON only.'
+  'for example a screenshot, a selfie indoors when the place is a park, or an obviously unrelated subject.'
 
-function question(landmarkName: string, category: string, description: string | null): string {
-  return (
-    `Place: "${landmarkName}". Category: ${category}.` +
-    (description ? ` Description: ${description}.` : '') +
-    '\n\nCould this photo plausibly have been taken at or near this place?' +
-    '\nRespond ONLY with {"is_match": boolean, "confidence": 0-100, "reasoning": "one short sentence"}'
-  )
+const SCHEMA = {
+  type: 'object',
+  properties: {
+    is_match: { type: 'boolean' },
+    confidence: { type: 'integer', description: 'how confident, 0 to 100' },
+    reasoning: { type: 'string', description: 'one short sentence' },
+  },
+  required: ['is_match', 'confidence', 'reasoning'],
+  additionalProperties: false,
 }
 
-function parseVerdict(text: string): Verdict {
-  const json = text.match(/\{[\s\S]*\}/)
-  if (!json) return UNCHECKED
-  try {
-    const parsed = JSON.parse(json[0]) as {
-      is_match?: boolean
-      confidence?: number
-      reasoning?: string
-    }
-    return {
-      checked: true,
-      isMatch: parsed.is_match !== false,
-      confidence: Math.max(0, Math.min(100, Math.round(parsed.confidence ?? 0))),
-      reasoning: String(parsed.reasoning ?? '').slice(0, 180),
-    }
-  } catch {
-    return UNCHECKED
-  }
-}
-
-async function viaAnthropic(jpegBase64: string, q: string, signal: AbortSignal): Promise<Verdict> {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    signal,
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 200,
-      system: SYSTEM,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: jpegBase64 } },
-            { type: 'text', text: q },
-          ],
-        },
-      ],
-    }),
-  })
-  if (!res.ok) {
-    console.warn(`[vision] anthropic ${res.status} — passing on deterministic checks alone`)
-    return UNCHECKED
-  }
-  const body = (await res.json()) as { content?: { type: string; text?: string }[] }
-  return parseVerdict(body.content?.find((c) => c.type === 'text')?.text ?? '')
-}
-
-async function viaOpenAI(jpegBase64: string, q: string, signal: AbortSignal): Promise<Verdict> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${OPENAI_KEY}`,
-      'content-type': 'application/json',
-    },
-    signal,
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      max_tokens: 200,
-      messages: [
-        { role: 'system', content: SYSTEM },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: q },
-            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${jpegBase64}` } },
-          ],
-        },
-      ],
-    }),
-  })
-  if (!res.ok) {
-    console.warn(`[vision] openai ${res.status} — passing on deterministic checks alone`)
-    return UNCHECKED
-  }
-  const body = (await res.json()) as { choices?: { message?: { content?: string } }[] }
-  return parseVerdict(body.choices?.[0]?.message?.content ?? '')
+interface Raw {
+  is_match?: boolean
+  confidence?: number
+  reasoning?: string
 }
 
 export async function verifyPhoto(
@@ -134,16 +61,28 @@ export async function verifyPhoto(
 ): Promise<Verdict> {
   if (!visionEnabled()) return UNCHECKED
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 12_000)
-  try {
-    const q = question(landmarkName, category, description)
-    if (OPENAI_KEY) return await viaOpenAI(jpegBase64, q, controller.signal)
-    return await viaAnthropic(jpegBase64, q, controller.signal)
-  } catch (e) {
-    console.warn('[vision] failed:', (e as Error).message)
-    return UNCHECKED
-  } finally {
-    clearTimeout(timeout)
+  const { data } = await askJSON<Raw>({
+    system: SYSTEM,
+    text:
+      `Place: "${landmarkName}". Category: ${category}.` +
+      (description ? ` Description: ${description}.` : '') +
+      '\n\nCould this photo plausibly have been taken at or near this place?',
+    imageB64: jpegBase64,
+    schema: SCHEMA,
+    maxTokens: 300,
+    claudeModel: CLAUDE_MODEL(),
+    geminiModel: GEMINI_MODEL(),
+    timeoutMs: 12_000,
+  })
+
+  // Every provider failed — pass on the deterministic checks alone rather than
+  // punish a player for someone else's outage.
+  if (!data) return UNCHECKED
+
+  return {
+    checked: true,
+    isMatch: data.is_match !== false,
+    confidence: Math.max(0, Math.min(100, Math.round(Number(data.confidence) || 0))),
+    reasoning: String(data.reasoning ?? '').slice(0, 180),
   }
 }

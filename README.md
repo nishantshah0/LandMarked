@@ -79,7 +79,7 @@ npm run dev            # map on :5173, server on :8787
 
 **Deploy:** the included `Dockerfile` and `render.yaml` deploy in a few minutes on Render's free tier. HTTPS is required — browsers only expose camera and precise geolocation on secure origins. Mount the disk at `/app/data` or the archive resets on redeploy.
 
-Keys live in `.env` (gitignored, kept out of the image by `.dockerignore`); see `.env.example` for what each one switches on. All are optional — `OPENAI_API_KEY` **or** `ANTHROPIC_API_KEY` enables vision verification and question generation (either provider works; OpenAI wins when both are set), and `ADMIN_TOKEN` enables registering a 3D model over HTTP. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
+Keys live in `.env` (gitignored, kept out of the image by `.dockerignore`); see `.env.example` for what each one switches on. All are optional — `ANTHROPIC_API_KEY` enables vision verification and question generation, `GEMINI_API_KEY` is the fallback behind it, and `ADMIN_TOKEN` enables attaching a 3D model over HTTP. Drop Reve-generated brand assets in `web/public/brand/` (`mark.svg` replaces the wordmark automatically).
 
 ## Privacy
 
