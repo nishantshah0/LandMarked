@@ -15,6 +15,7 @@ import type {
   LandmarkState,
   LeaderRow,
   Photo,
+  Standings,
 } from '../shared/types'
 import { allAttempts, allClaims, allLandmarks, allPhotos } from './db'
 
@@ -130,22 +131,36 @@ export function feed(limit = 20): FeedEntry[] {
     })
 }
 
-export function leaders(now: number): LeaderRow[] {
-  const map = new Map<string, LeaderRow>()
+/** Everyone who has ever claimed anything, ranked two ways.
+ *
+ *  Both boards ship in full rather than truncated to a top ten, so a player
+ *  outside it can still be shown their own position. One row per person who has
+ *  ever played is a rounding error next to the landmark payload. */
+export function standings(now: number): Standings {
+  const map = new Map<string, LeaderRow & { places: Set<string> }>()
+
   for (const c of claims) {
     const l = byId.get(c.landmarkId)
     const pts = TIER_POINTS[(l?.tier ?? 1) as Tier]
-    const row = map.get(c.handle) ?? {
-      handle: c.handle,
-      avatarColor: c.avatarColor,
-      holding: 0,
-      allTime: 0,
-      points: 0,
+    let row = map.get(c.handle)
+    if (!row) {
+      row = {
+        handle: c.handle,
+        avatarColor: c.avatarColor,
+        holding: 0,
+        allTime: 0,
+        visited: 0,
+        points: 0,
+        places: new Set<string>(),
+      }
+      map.set(c.handle, row)
     }
     row.allTime++
     row.points += pts
-    map.set(c.handle, row)
+    // Re-taking a place you already know is not visiting somewhere new.
+    row.places.add(c.landmarkId)
   }
+
   for (const l of landmarks) {
     const o = currentOwner(l.id, now)
     if (o) {
@@ -153,7 +168,18 @@ export function leaders(now: number): LeaderRow[] {
       if (row) row.holding++
     }
   }
-  return [...map.values()].sort((a, b) => b.points - a.points).slice(0, 12)
+
+  const rows: LeaderRow[] = [...map.values()].map(({ places, ...r }) => ({
+    ...r,
+    visited: places.size,
+  }))
+
+  // Points break ties on both boards, so a tie is settled by what you took
+  // rather than arbitrarily.
+  const byHolding = [...rows].sort((a, b) => b.holding - a.holding || b.points - a.points)
+  const byVisited = [...rows].sort((a, b) => b.visited - a.visited || b.points - a.points)
+
+  return { holding: byHolding, visited: byVisited, players: rows.length }
 }
 
 /** The aggregate portrait — what the neighbourhood actually looked like today. */

@@ -874,3 +874,143 @@ body {
   border-style: dashed;
   opacity: 0.9;
 }
+
+/* ---------------- standings ---------------- */
+
+.boardtitle {
+  font-family: var(--serif);
+  font-size: 23px;
+  margin-bottom: 12px;
+}
+
+.boardtabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.btab {
+  flex: 1;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+  background: rgba(23, 24, 28, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.btab.on {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.board {
+  list-style: none;
+}
+
+.board li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  padding: 9px 0;
+  border-bottom: 1px dotted var(--line);
+}
+
+.board .rk {
+  width: 20px;
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.4;
+  flex: none;
+}
+
+.board .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.board .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board b {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.board .unit {
+  font-size: 10.5px;
+  font-weight: 500;
+  opacity: 0.5;
+}
+
+/* your own row, wherever it lands */
+.board li.me {
+  background: rgba(229, 83, 61, 0.09);
+  border-radius: 8px;
+  padding-left: 6px;
+  padding-right: 6px;
+  margin: 0 -6px;
+  font-weight: 700;
+}
+
+.board li.gap {
+  justify-content: center;
+  opacity: 0.35;
+  border: none;
+  padding: 2px 0;
+}
+
+.board li.none {
+  border: none;
+  opacity: 0.6;
+  font-size: 12.5px;
+}
+
+.boardnote {
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.55;
+  margin-top: 12px;
+}
+
+/* your own position, above the list so it needs no scrolling */
+.boardme {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13.5px;
+  background: rgba(229, 83, 61, 0.09);
+  border: 1px solid rgba(229, 83, 61, 0.25);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.boardme .v {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.boardme.none {
+  display: block;
+  background: rgba(23, 24, 28, 0.04);
+  border-color: var(--line);
+  font-size: 12.5px;
+  opacity: 0.75;
+}
+
+/* the last row must clear the sheet's bottom edge */
+.board li:last-child {
+  border-bottom: none;
+  margin-bottom: 6px;
+}

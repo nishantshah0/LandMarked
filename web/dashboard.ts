@@ -3,7 +3,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { TIER_LABEL, VENUE, type Tier } from '../shared/config'
 import { hex } from '../shared/palette'
-import type { DashStats, FeedEntry, LeaderRow, ServerMsg } from '../shared/types'
+import type { DashStats, FeedEntry, LeaderRow, ServerMsg, Standings } from '../shared/types'
 import { REJECT_TEXT } from '../shared/types'
 
 const $ = (id: string): HTMLElement => document.getElementById(id)!
@@ -166,7 +166,7 @@ function countUp(el: HTMLElement, to: number): void {
   step()
 }
 
-function render(stats: DashStats, leaders: LeaderRow[]): void {
+function render(stats: DashStats, standings: Standings): void {
   const city = stats.city
 
   $('cityPalette').innerHTML = city.palette.length
@@ -239,14 +239,19 @@ function render(stats: DashStats, leaders: LeaderRow[]): void {
     new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   $('sparkAxis').innerHTML = `<span>${fmt(t0 + start * bucketMs)}</span><span>now</span>`
 
-  $('leaders').innerHTML =
-    leaders
+  const board = (rows: LeaderRow[], metric: (l: LeaderRow) => number, unit: string): string =>
+    rows
+      .slice(0, 8)
       .map(
-        (l) =>
-          `<li><i class="dot" style="background:${l.avatarColor}"></i>${l.handle}` +
-          `<span class="sub2">${l.holding} held · ${l.allTime} all-time</span><b>${l.points}</b></li>`,
+        (l, i) =>
+          `<li><span class="rk">${i + 1}</span>` +
+          `<i class="dot" style="background:${escapeHtml(l.avatarColor)}"></i>${escapeHtml(l.handle)}` +
+          `<b>${metric(l)}<span class="unit"> ${unit}</span></b></li>`,
       )
       .join('') || '<li class="none">No one yet.</li>'
+
+  $('boardHolding').innerHTML = board(standings.holding, (l) => l.holding, 'held')
+  $('boardVisited').innerHTML = board(standings.visited, (l) => l.visited, 'places')
 
   $('contested').innerHTML =
     stats.mostContested.map((c) => `<li>${c.name}<b>${c.n}</b></li>`).join('') ||
@@ -276,7 +281,7 @@ function connect(): void {
       return
     }
     if (m.t === 'init' || m.t === 'tick') {
-      render(m.stats, m.leaders)
+      render(m.stats, m.standings)
       applyHeat(m.stats.heat)
       // Only init carries the backlog; ticks would otherwise wipe entries that
       // arrived live since the last one.
