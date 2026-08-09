@@ -192,8 +192,6 @@ export const REJECT_TEXT: Record<RejectReason, string> = {
   trivia_failed: 'Wrong answer on an iconic place',
 }
 
-export type ClientMsg = { t: 'hello'; handle: string | null }
-
 export type ServerMsg =
   | {
       t: 'init'

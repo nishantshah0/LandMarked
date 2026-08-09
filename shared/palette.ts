@@ -17,14 +17,6 @@ export interface PhotoAnalysis {
   skyFraction: number // 0..1, share of the upper third that is bright and blue-ish
 }
 
-export const EMPTY_ANALYSIS: PhotoAnalysis = {
-  gray: new Array(72).fill(0),
-  palette: [],
-  weights: [],
-  brightness: 0,
-  saturation: 0,
-  skyFraction: 0,
-}
 
 export function luma(r: number, g: number, b: number): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
