@@ -2,7 +2,15 @@ services:
   - type: web
     name: seen
     runtime: docker
-    plan: free
+    # Starter (~$7/mo, cancel after the event) because persistent disks aren't
+    # available on Render's free tier — and without the disk, every restart or
+    # redeploy wipes the archive, which is the whole product.
+    #
+    # Truly-free variant: change plan to "free" AND delete the disk block below.
+    # Accept that data resets on restart and the service sleeps after ~15 min
+    # idle (first visitor then waits ~1 min). Don't redeploy after real people
+    # have claimed.
+    plan: starter
     healthCheckPath: /healthz
     envVars:
       - key: PORT

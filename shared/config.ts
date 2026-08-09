@@ -3,10 +3,11 @@
 // with a generous radius so a judge can claim it standing at your table — that
 // is the whole live-demo moment, so get the coordinates right.
 export const VENUE = {
-  name: 'SummerHacks 2026',
-  lat: 43.6426,
-  lng: -79.4025,
-  radiusM: 250, // generous: indoors, GPS drifts badly
+  name: 'SummerHacks @ Stackt Market',
+  // 28 Bathurst St, Toronto — Bathurst & Front
+  lat: 43.641,
+  lng: -79.4022,
+  radiusM: 250, // generous: shipping containers, GPS drifts
 }
 
 /** Tight bbox around the venue. One neighbourhood, never the whole GTA —
