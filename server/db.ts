@@ -39,6 +39,7 @@ db.exec(`
 // one is unaffected.
 for (const col of [
   'fun_fact TEXT',
+  'osm_facts TEXT',
   'splat_url TEXT',
   "splat_state TEXT NOT NULL DEFAULT 'none'",
   'splat_photos INTEGER NOT NULL DEFAULT 0',
@@ -78,13 +79,36 @@ export function landmarkCount(): number {
 }
 
 export function insertLandmarks(list: Landmark[]): void {
+  // COALESCE keeps anything already earned: a reseed must not wipe a landmark's
+  // photo count, its generated question or its 3D model just because the fresh
+  // Overpass row does not carry them.
   const st = db.prepare(
-    `INSERT OR REPLACE INTO landmarks (id,name,lat,lng,tier,category,description,photo_count,fun_fact)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO landmarks (id,name,lat,lng,tier,category,description,osm_facts,photo_count,fun_fact)
+     VALUES (?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(id) DO UPDATE SET
+       name = excluded.name,
+       lat = excluded.lat,
+       lng = excluded.lng,
+       tier = excluded.tier,
+       category = excluded.category,
+       description = COALESCE(excluded.description, landmarks.description),
+       osm_facts = COALESCE(excluded.osm_facts, landmarks.osm_facts),
+       fun_fact = COALESCE(landmarks.fun_fact, excluded.fun_fact)`,
   )
   db.exec('BEGIN')
   for (const l of list) {
-    st.run(l.id, l.name, l.lat, l.lng, l.tier, l.category, l.description, l.photoCount, l.funFact)
+    st.run(
+      l.id,
+      l.name,
+      l.lat,
+      l.lng,
+      l.tier,
+      l.category,
+      l.description,
+      l.osmFacts,
+      l.photoCount,
+      l.funFact,
+    )
   }
   db.exec('COMMIT')
 }
@@ -99,6 +123,7 @@ interface LRow {
   description: string | null
   photo_count: number
   fun_fact: string | null
+  osm_facts: string | null
   splat_url: string | null
   splat_state: string | null
   splat_photos: number | null
@@ -114,6 +139,7 @@ export function allLandmarks(): Landmark[] {
     tier: r.tier as Tier,
     category: r.category,
     description: r.description,
+    osmFacts: r.osm_facts ?? null,
     photoCount: Number(r.photo_count),
     funFact: r.fun_fact ?? null,
     splatUrl: r.splat_url ?? null,

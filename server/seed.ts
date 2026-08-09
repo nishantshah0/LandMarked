@@ -7,21 +7,60 @@ import type { Landmark } from '../shared/types'
 import { insertLandmarks, landmarkCount } from './db'
 
 // Density comes from the small stuff — murals, memorials, fountains, clocks —
-// not from famous sites. Wide tag list on purpose.
+// as much as from famous sites. Wide tag list on purpose.
+//
+// Every family is queried as both node and way: churches, theatres, libraries,
+// stadiums and towers are usually mapped as building outlines rather than
+// points, and querying only nodes silently drops most of them. `out center`
+// gives each way a representative coordinate.
 const B = `(${BBOX.south},${BBOX.west},${BBOX.north},${BBOX.east})`
-const QUERY = `[out:json][timeout:90];
+const QUERY = `[out:json][timeout:120];
 (
-  node["tourism"~"attraction|artwork|museum|viewpoint|gallery|zoo"]${B};
-  way["tourism"~"attraction|museum|zoo"]${B};
-  node["historic"]${B};
-  way["historic"]${B};
-  node["artwork_type"]${B};
-  node["memorial"]${B};
-  node["amenity"~"place_of_worship|theatre|arts_centre|fountain|clock|library"]${B};
-  way["leisure"~"park|garden|stadium|nature_reserve"]${B};
-  node["leisure"~"park|garden"]${B};
+  nwr["tourism"~"attraction|artwork|museum|viewpoint|gallery|zoo|aquarium"]${B};
+  nwr["historic"]${B};
+  nwr["artwork_type"]${B};
+  nwr["memorial"]${B};
+  nwr["amenity"~"place_of_worship|theatre|arts_centre|fountain|clock|library|marketplace"]${B};
+  nwr["leisure"~"park|garden|stadium|nature_reserve"]${B};
+  nwr["man_made"~"tower|lighthouse|obelisk|bridge"]${B};
+  nwr["building"~"cathedral|chapel|stadium|train_station"]${B};
 );
 out center tags;`
+
+/** OSM tags worth keeping verbatim — the grounding a question can be built on
+ *  without anything being invented. Everything else is dropped. */
+const FACT_TAGS = [
+  'inscription',
+  'description',
+  'artist_name',
+  'artwork_type',
+  'start_date',
+  'opening_date',
+  'building:architecture',
+  'architect',
+  'heritage',
+  'heritage:operator',
+  'historic',
+  'historic:civilization',
+  'memorial',
+  'memorial:type',
+  'material',
+  'height',
+  'religion',
+  'denomination',
+  'operator',
+  'website',
+  'wikipedia',
+  'wikidata',
+  'ele',
+  'addr:street',
+]
+
+function factsOf(tags: Record<string, string>): string | null {
+  const kept: Record<string, string> = {}
+  for (const k of FACT_TAGS) if (tags[k]) kept[k] = tags[k].slice(0, 300)
+  return Object.keys(kept).length ? JSON.stringify(kept) : null
+}
 
 interface OverpassEl {
   type: string
@@ -46,8 +85,16 @@ function categoryOf(tags: Record<string, string>): string {
 }
 
 async function main(): Promise<void> {
-  if (landmarkCount() > 0) {
-    console.log(`[seed] ${landmarkCount()} landmarks already present — delete data/ to reseed`)
+  // --force reseeds in place. Landmarks are written with INSERT OR REPLACE and
+  // keyed by OSM id, so re-running widens the map without touching the photo
+  // archive or the claim history — you should not have to delete data/ (and
+  // lose every photograph) just to add landmarks.
+  const force = process.argv.includes('--force')
+  if (landmarkCount() > 0 && !force) {
+    console.log(
+      `[seed] ${landmarkCount()} landmarks already present — ` +
+        'run `npm run seed -- --force` to re-pull and widen (keeps photos and claims)',
+    )
     process.exit(0)
   }
 
@@ -103,6 +150,7 @@ async function main(): Promise<void> {
       tier: tierFor(name),
       category: categoryOf(el.tags ?? {}),
       description: el.tags?.description ?? el.tags?.inscription ?? null,
+      osmFacts: factsOf(el.tags ?? {}),
       photoCount: 0,
       funFact: null,
       splatUrl: null,
@@ -138,6 +186,7 @@ async function main(): Promise<void> {
     tier: 3,
     category: 'venue',
     description: 'The hackathon itself. Claimable from inside the building.',
+    osmFacts: null,
     photoCount: 0,
     funFact: JSON.stringify(VENUE_TRIVIA),
     splatUrl: null,

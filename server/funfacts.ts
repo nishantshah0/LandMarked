@@ -1,18 +1,33 @@
-// Batch-generates one fun-fact MCQ per landmark, offline, once.
-// Run after seeding, with ANTHROPIC_API_KEY set:  npx tsx server/funfacts.ts
+// Generates one question per landmark, offline, once.
+//   npm run funfacts              every landmark without a question
+//   npm run funfacts -- --gated   only the trivia-gated ones (tier 3)
+//   npm run funfacts -- --limit 50
 //
-// Honesty rule baked into the prompt: for obscure places with no description,
-// the question must be about the *category* (murals, memorials, fountains in
-// general), never an invented specific "fact" about that exact spot.
+// The whole design here is about specificity without invention. A question like
+// "what are murals usually made of?" is filler — it could be asked at any of the
+// 300 pins. But a *specific* question about an obscure mural is worse: there is
+// nothing to base it on, so the model would make one up, and a wrong "fun fact"
+// attached to a real place is the one output this project cannot ship.
+//
+// So the question is grounded rather than guessed. Two sources, both real:
+//   1. the OSM tags kept verbatim at seed time (inscription, artist, dates,
+//      material, architect, heritage status — see FACT_TAGS in seed.ts);
+//   2. for landmarks carrying a `wikipedia` tag, the article's opening extract.
+//
+// The model is given that grounding, told to build the question from it, and
+// told to return grounded:false rather than invent anything when the grounding
+// is too thin. A skipped landmark simply has no quiz — and because the gate
+// fails open, a skipped tier-3 landmark is claimable without one.
 
 import { CFG } from '../shared/config'
 import { env, loadEnv } from '../shared/env'
+import type { Landmark } from '../shared/types'
 import { allLandmarks, setFunFact } from './db'
 
 loadEnv()
 
 const KEY = (): string => env('ANTHROPIC_API_KEY')
-const MODEL = (): string => env('FUNFACT_MODEL') || 'claude-sonnet-5'
+const MODEL = (): string => env('FUNFACT_MODEL') || 'claude-opus-5'
 
 interface FunFact {
   question: string
@@ -20,7 +35,80 @@ interface FunFact {
   correctIndex: number
 }
 
-async function generate(name: string, category: string, description: string | null): Promise<FunFact | null> {
+/** What the model must return. Enforced by the API, not by a regex on prose. */
+const SCHEMA = {
+  type: 'object',
+  properties: {
+    grounded: {
+      type: 'boolean',
+      description:
+        'True only if the supplied facts contain something specific enough to build a question on. False if you would have to invent anything.',
+    },
+    sourceFact: {
+      type: 'string',
+      description:
+        'The exact fact from the supplied material that the correct answer comes from. Empty string when grounded is false.',
+    },
+    question: { type: 'string' },
+    options: { type: 'array', items: { type: 'string' } },
+    correctIndex: { type: 'integer' },
+  },
+  required: ['grounded', 'sourceFact', 'question', 'options', 'correctIndex'],
+  additionalProperties: false,
+} as const
+
+/** The opening paragraph of a landmark's Wikipedia article, when it has one. */
+async function wikiExtract(tag: string): Promise<string | null> {
+  // OSM stores this as "en:CN Tower" — language prefix, then article title.
+  const m = /^([a-z-]+):(.+)$/.exec(tag.trim())
+  const lang = m ? m[1] : 'en'
+  const title = m ? m[2] : tag.trim()
+  try {
+    const res = await fetch(
+      `https://${lang}.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
+      { headers: { 'user-agent': 'SEEN/1.0 (hackathon project; contact via github)' } },
+    )
+    if (!res.ok) return null
+    const body = (await res.json()) as { extract?: string }
+    return body.extract ? body.extract.slice(0, 1500) : null
+  } catch {
+    return null
+  }
+}
+
+/** Everything true we know about this place, as plain lines. */
+async function groundingFor(l: Landmark): Promise<string> {
+  const lines: string[] = [`Name: ${l.name}`, `Category: ${l.category}`]
+  if (l.description) lines.push(`Description: ${l.description}`)
+
+  let tags: Record<string, string> = {}
+  try {
+    tags = l.osmFacts ? (JSON.parse(l.osmFacts) as Record<string, string>) : {}
+  } catch {
+    tags = {}
+  }
+  for (const [k, v] of Object.entries(tags)) {
+    if (k === 'wikipedia' || k === 'wikidata') continue
+    lines.push(`OpenStreetMap ${k}: ${v}`)
+  }
+
+  if (tags.wikipedia) {
+    const extract = await wikiExtract(tags.wikipedia)
+    if (extract) lines.push(`Wikipedia: ${extract}`)
+  }
+
+  return lines.join('\n')
+}
+
+interface Result {
+  grounded: boolean
+  sourceFact: string
+  question: string
+  options: string[]
+  correctIndex: number
+}
+
+async function generate(l: Landmark, grounding: string): Promise<FunFact | null> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -30,39 +118,52 @@ async function generate(name: string, category: string, description: string | nu
     },
     body: JSON.stringify({
       model: MODEL(),
-      max_tokens: 300,
+      max_tokens: 1000,
+      // Structured outputs: the API enforces the shape, so there is no prose to
+      // parse and no "reply with JSON only" plea in the prompt.
+      output_config: { format: { type: 'json_schema', schema: SCHEMA } },
       system:
-        'You write short, fun, surprising multiple-choice trivia for a city-exploration game. ' +
-        'For well-documented places, use real knowledge. For obscure or generic places, ask about ' +
-        'the CATEGORY in general (how murals get commissioned, why memorials face the way they do) — ' +
-        'never invent a specific fact about the exact spot. Keep it light. Reply with JSON only.',
+        'You write one multiple-choice question about a specific real place, for a city-exploration game. ' +
+        'The question must be about THIS place in particular — its own history, its maker, its materials, ' +
+        'its dates, what its inscription says, what it commemorates. A question that would read the same at ' +
+        'any other park, mural or memorial is a failure.\n\n' +
+        'Build the question only from the supplied facts. You may use well-known outside knowledge about ' +
+        'famous landmarks, but never invent a specific claim about an obscure one.\n\n' +
+        'If the supplied facts contain nothing specific enough — just a name and a generic category — set ' +
+        'grounded to false and leave the other fields empty. Returning nothing is correct and expected for ' +
+        'roughly half of these places; a plausible-sounding invented fact is the worst possible answer.\n\n' +
+        'When grounded: four options, one correct, three plausible but clearly wrong to someone standing ' +
+        'there. Put the exact supplying fact in sourceFact.',
       messages: [
         {
           role: 'user',
-          content:
-            `Place: "${name}". Category: ${category}.` +
-            (description ? ` Description: ${description}.` : ' No description available.') +
-            '\nReturn ONLY {"question":"...","options":["...","...","...","..."],"correctIndex":0}',
+          content: `Here is everything known about this place:\n\n${grounding}`,
         },
       ],
     }),
   })
+
   if (!res.ok) {
-    console.warn(`  ! ${res.status} for "${name}"`)
+    console.warn(`  ! ${res.status} for "${l.name}"`)
     return null
   }
+
   const body = (await res.json()) as { content?: { type: string; text?: string }[] }
   const text = body.content?.find((c) => c.type === 'text')?.text ?? ''
-  const m = text.match(/\{[\s\S]*\}/)
-  if (!m) return null
+  let out: Result
   try {
-    const f = JSON.parse(m[0]) as FunFact
-    if (!f.question || !Array.isArray(f.options) || f.options.length < 3) return null
-    f.correctIndex = Math.max(0, Math.min(f.options.length - 1, Number(f.correctIndex) || 0))
-    return f
+    out = JSON.parse(text) as Result
   } catch {
     return null
   }
+
+  if (!out.grounded) return null
+  if (!out.question || !Array.isArray(out.options) || out.options.length < 3) return null
+  if (!out.options.every((o) => typeof o === 'string' && o.length > 0)) return null
+  const i = Number(out.correctIndex)
+  if (!Number.isInteger(i) || i < 0 || i >= out.options.length) return null
+
+  return { question: out.question, options: out.options, correctIndex: i }
 }
 
 async function main(): Promise<void> {
@@ -70,24 +171,43 @@ async function main(): Promise<void> {
     console.log('[funfacts] ANTHROPIC_API_KEY not set — skipping (the app works fine without them)')
     process.exit(0)
   }
-  // Tier 3 first: on those the question is the claim gate, not flavour, so if
-  // this run is interrupted the gated places are the ones already covered.
+
+  const gatedOnly = process.argv.includes('--gated')
+  const limitArg = process.argv.indexOf('--limit')
+  const limit = limitArg >= 0 ? Number(process.argv[limitArg + 1]) : Infinity
+
+  // Tier 3 first: there the question is the claim gate, not flavour, so if this
+  // run is interrupted the gated places are the ones already covered.
   const todo = allLandmarks()
     .filter((l) => !l.funFact)
+    .filter((l) => !gatedOnly || l.tier >= CFG.triviaGateMinTier)
     .sort((a, b) => b.tier - a.tier)
+    .slice(0, Number.isFinite(limit) ? limit : undefined)
+
   const gated = todo.filter((l) => l.tier >= CFG.triviaGateMinTier).length
-  console.log(`[funfacts] generating for ${todo.length} landmarks (${gated} of them gated)…`)
-  let done = 0
+  console.log(
+    `[funfacts] ${todo.length} landmarks to try (${gated} gated) · model ${MODEL()}`,
+  )
+
+  let written = 0
+  let skipped = 0
   for (const l of todo) {
-    const f = await generate(l.name, l.category, l.description)
+    const grounding = await groundingFor(l)
+    const f = await generate(l, grounding)
     if (f) {
       setFunFact(l.id, JSON.stringify(f))
-      done++
-      console.log(`  ✓ ${l.name}`)
+      written++
+      console.log(`  ✓ ${l.name} — ${f.question}`)
+    } else {
+      skipped++
+      console.log(`  · ${l.name} — nothing specific enough, left without a question`)
     }
-    await new Promise((r) => setTimeout(r, 300)) // gentle pacing
+    await new Promise((r) => setTimeout(r, 250)) // gentle pacing
   }
-  console.log(`[funfacts] ${done}/${todo.length} written`)
+
+  console.log(
+    `[funfacts] ${written} written, ${skipped} skipped as too thin to ask about honestly`,
+  )
   process.exit(0)
 }
 

@@ -12,8 +12,11 @@ export interface Landmark {
   tier: Tier
   category: string
   description: string | null
+  /** Selected OSM tags kept verbatim (JSON object) — the factual grounding a
+   *  question is generated from, so nothing has to be invented. */
+  osmFacts: string | null
   photoCount: number
-  /** JSON {question, options, correctIndex} — batch-generated flavor, or null */
+  /** JSON {question, options, correctIndex} — batch-generated, or null */
   funFact: string | null
   /** Where the finished splat lives: /splats/x.ply, or an external URL */
   splatUrl: string | null

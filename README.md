@@ -27,6 +27,8 @@ Tier-3 landmarks are **trivia-gated**: the camera will not open until you answer
 
 It fails open by design: a landmark with no question is simply not gated, so a skipped `npm run funfacts` can never make a place unclaimable. The venue's question is hand-written in `shared/config.ts` and backfilled at boot, because that is the one gate the live demo depends on.
 
+Questions are **grounded, never invented**. The seed keeps a whitelist of OSM tags verbatim — inscription, artist, dates, material, architect, heritage status — and for landmarks carrying a `wikipedia` tag the generator also pulls the article's opening extract. The model builds the question from that material and returns `grounded: false` rather than invent anything when the grounding is thin, so a mural with nothing but a name gets no quiz instead of a plausible-sounding fabrication. Roughly 260 of the 301 landmarks carry facts; 58 have a Wikipedia article behind them.
+
 ## The place in 3D
 
 Every accepted photo is a photograph of one place from one angle, which is exactly the input a photogrammetry pipeline wants. Once a place crosses eight photographs the app offers to rebuild it as a **3D Gaussian Splat**, rendered in-browser at `/splat.html?id=<landmarkId>` by [Spark](https://sparkjs.dev) — the model is served from our own `data/splats/`, so the viewer depends on no CDN, iframe or third-party player.
@@ -57,6 +59,8 @@ npm install
 cp .env.example .env   # every key in it is optional
 npm run seed           # pulls real landmarks near the venue from OpenStreetMap
 npm run funfacts       # optional: questions per landmark (gated tiers first)
+#   npm run seed -- --force     re-pull and widen, keeping photos and claims
+#   npm run funfacts -- --gated only the tier-3 landmarks that need a gate
 npm run dev            # map on :5173, server on :8787
 ```
 

@@ -21,18 +21,25 @@ export const VENUE_TRIVIA = {
   correctIndex: 0,
 }
 
-/** Tight bbox around the venue. One neighbourhood, never the whole GTA —
- *  thirty claims across a city reads as abandoned; across a few blocks it
- *  reads as a scene. */
+/** Box around the venue, covering the downtown core rather than one block.
+ *  ±0.04° latitude ≈ 4.4 km north and south; ±0.05° longitude ≈ 4.0 km east
+ *  and west at this latitude — so roughly a 9 km × 8 km rectangle that reaches
+ *  the CN Tower, Rogers Centre, Union Station, Kensington and the AGO. */
 export const BBOX = {
-  south: VENUE.lat - 0.018,
-  west: VENUE.lng - 0.024,
-  north: VENUE.lat + 0.018,
-  east: VENUE.lng + 0.024,
+  south: VENUE.lat - 0.04,
+  west: VENUE.lng - 0.05,
+  north: VENUE.lat + 0.04,
+  east: VENUE.lng + 0.05,
 }
 
-/** Nearest N landmarks to the venue. Small on purpose — see the note on BBOX. */
-export const MAX_LANDMARKS = 40
+/** Keep the N nearest to the venue, of everything the box returns.
+ *
+ *  The trade-off to know about: pins are kept nearest-first, so raising this
+ *  grows the map outward from the venue. Density near the venue is what makes
+ *  the game playable on foot during an event; reach is what makes the map look
+ *  like a city rather than a block. 300 gets both here — dense within a few
+ *  hundred metres, still reaching the marquee landmarks a judge will look for. */
+export const MAX_LANDMARKS = 300
 
 export const CFG = {
   claimHours: 3,
