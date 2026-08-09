@@ -76,11 +76,29 @@ body {
   display: none;
 }
 
+/* The card floats over a fully live map, so a first-time visitor who taps a pin
+   gets a landmark sheet opening underneath the explainer — two stacked panels
+   in the first two seconds, which reads as a broken layout. This backdrop makes
+   the card modal without new markup: it covers the viewport, and because a
+   pseudo-element hit-tests as part of its parent, taps on it land on the card
+   instead of the map. */
+.introcard::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 24, 28, 0.4);
+  z-index: -1;
+}
+
 .introcard {
   position: fixed;
-  left: 50%;
+  /* Centred with auto margins rather than translateX(-50%): a transform makes
+     the card the containing block for its own fixed-position ::before, which
+     would shrink the backdrop to the size of the card. */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
   bottom: 26px;
-  transform: translateX(-50%);
   z-index: 30;
   width: min(430px, calc(100vw - 28px));
   background: #fff;

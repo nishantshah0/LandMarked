@@ -276,6 +276,31 @@ function setLandmarks(list: LandmarkPin[]): void {
   for (const l of list) byId.set(l.id, l)
 }
 
+/** True while the first-run explainer is up. A deep link that arrives now is
+ *  held rather than dropped: opening its sheet under the card would put two
+ *  panels on top of each other in a stranger's first two seconds. */
+let introOpen = false
+
+/** Open the place named in the URL hash, e.g. /#w670070522.
+ *
+ *  now.html's "start here" cards have always linked here, but nothing on this
+ *  page read the hash, so every one of them dropped the visitor on the default
+ *  map view with no sign of the place they had just chosen. Flying there is
+ *  half the answer; opening the sheet is the other half, because at this zoom
+ *  one pin among four thousand is not an answer to "which one?". */
+function openFromHash(): void {
+  const id = decodeURIComponent(location.hash.replace(/^#/, '')).trim()
+  if (!id) return
+  // Dismissing the explainer calls this again, so the link is not lost.
+  if (introOpen) return
+  const l = byId.get(id)
+  // An unknown id is a stale or hand-edited link, not an error worth a dialog —
+  // the map behind it is still perfectly usable.
+  if (!l) return
+  if (mapReady) map.jumpTo({ center: [l.lng, l.lat], zoom: Math.max(map.getZoom(), 16.5) })
+  void openSheet(id)
+}
+
 /* ---------------- the city in three dimensions ---------------- */
 //
 // The real city, extruded from OpenStreetMap's own building heights, and the
@@ -1029,6 +1054,9 @@ function connect(): void {
       syncMarkers()
       refreshCity()
       paintColourbar(m.stats.city.palette)
+      // Only now can a link to a specific place be honoured — the id in the
+      // hash means nothing until the landmarks exist.
+      openFromHash()
     } else if (m.t === 'claimed') {
       const i = landmarks.findIndex((l) => l.id === m.landmark.id)
       if (i >= 0) landmarks[i] = m.landmark
@@ -1075,11 +1103,19 @@ setInterval(refreshDistance, 4000)
 // already-mounted marker untouched, and repainting all 4000 would be absurd.
 setInterval(repaintVisible, 60_000)
 
+// Arriving at /#id from another tab or a second "start here" card fires this
+// rather than a fresh load.
+window.addEventListener('hashchange', openFromHash)
+
 // One-time explainer — a stranger's first 10 seconds, then never again.
 if (!localStorage.getItem('seen_intro')) {
+  introOpen = true
   $('intro').removeAttribute('hidden')
   $('introOk').onclick = () => {
     localStorage.setItem('seen_intro', '1')
     $('intro').setAttribute('hidden', '')
+    introOpen = false
+    // Honour a link the visitor followed in before the explainer appeared.
+    openFromHash()
   }
 }
