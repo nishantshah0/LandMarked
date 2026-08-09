@@ -6,10 +6,7 @@
 !.env.example
 
 # Mounted at runtime as a volume; copying a local archive in would shadow it.
-# The landmark database is the exception — it is baked in as a first-boot seed
-# so deploying never depends on Overpass. Photos and claims still never travel.
 data/
-!data/seen.db
 
 node_modules/
 web-dist/

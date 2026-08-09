@@ -17,9 +17,9 @@ set -e
 mkdir -p /app/data/photos /app/data/splats
 
 if [ ! -f /app/data/seen.db ]; then
-  if [ -f /app/seed/seen.db ]; then
+  if [ -f /app/seed/landmarks.db ]; then
     echo "[boot] fresh volume — installing the baked landmark database"
-    cp /app/seed/seen.db /app/data/seen.db
+    cp /app/seed/landmarks.db /app/data/seen.db
   else
     echo "[boot] no baked database found; pulling landmarks from OpenStreetMap"
     npm run seed || echo "[boot] seed failed — starting anyway, run 'npm run seed' later"

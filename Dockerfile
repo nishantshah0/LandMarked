@@ -8,11 +8,12 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Bake the seeded landmark set in at a path the mounted volume cannot shadow.
-# See docker-entrypoint.sh: first boot copies it onto an empty volume, so a
-# deploy never waits on — or fails because of — the Overpass API.
-RUN mkdir -p /app/seed && \
-    if [ -f data/seen.db ]; then cp data/seen.db /app/seed/seen.db; fi
+# seed/landmarks.db is committed (unlike data/, which is gitignored), so this
+# works when the platform builds from a clean clone. See docker-entrypoint.sh:
+# first boot copies it onto an empty disk, and the deploy never waits on — or
+# fails because of — the Overpass API. Regenerate with `npm run snapshot`.
+RUN test -f seed/landmarks.db || \
+    (echo "FATAL: seed/landmarks.db missing — run 'npm run snapshot' and commit it" && exit 1)
 
 ENV NODE_ENV=production
 ENV PORT=8787
