@@ -9,6 +9,7 @@ import type {
   LandmarkState,
   Photo,
   ServerMsg,
+  SplatResponse,
 } from '../shared/types'
 import { analyse, shrink } from './analyse'
 
@@ -222,23 +223,29 @@ async function openSheet(id: string): Promise<void> {
       <button id="dirBtn" class="claim ghost2">Walk me there</button>
     </div>
     <div id="routeInfo" class="routeinfo"></div>
+    ${l.gated ? `<p class="gate-flag">🔒 Iconic — answer its question to unlock the camera</p>` : ''}
     ${funFactHtml(l.funFact)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}
+    ${splatHtml(l)}
   `
   wireFunFact()
+  wireSplat(l)
 
   const btn = document.getElementById('claimBtn') as HTMLButtonElement
   btn.onclick = () => {
     if (!getHandle() && !askHandle()) return
-    ;($('camera') as HTMLInputElement).click()
+    pendingAnswer = null
+    const camera = (): void => ($('camera') as HTMLInputElement).click()
+    if (l.gated) openGate(l, camera)
+    else camera()
   }
   const dir = document.getElementById('dirBtn')
   if (dir) dir.onclick = () => void showRoute(l.id)
   refreshDistance()
 }
 
-/* ---------------- fun fact (flavor, never a gate) ---------------- */
+/* ---------------- fun fact (flavor on ordinary places) ---------------- */
 
 function funFactHtml(raw: string | null): string {
   if (!raw) return ''
@@ -270,6 +277,139 @@ function wireFunFact(): void {
       if (note) note.hidden = false
     }
   })
+}
+
+/* ---------------- the iconic-tier gate (§3.6) ---------------- */
+
+// The answer lives only on the server: a gated landmark ships its question and
+// options and nothing else. Answering here just unlocks the camera early — the
+// claim carries the answer and the server grades it again for real.
+let pendingAnswer: number | null = null
+
+function openGate(l: LandmarkState, onPass: () => void): void {
+  if (!l.trivia) {
+    onPass()
+    return
+  }
+  showModal(`
+    <div class="gate">
+      <p class="gate-tier">Iconic — you have to know it to take it</p>
+      <h2>${l.name}</h2>
+      <p class="gate-q">${l.trivia.question}</p>
+      <div class="gate-opts">
+        ${l.trivia.options.map((o, i) => `<button class="ff-opt" data-i="${i}">${o}</button>`).join('')}
+      </div>
+      <p class="gate-note" hidden></p>
+    </div>`)
+
+  const note = document.querySelector<HTMLElement>('.gate-note')
+  document.querySelectorAll<HTMLButtonElement>('.gate-opts .ff-opt').forEach((b) => {
+    b.onclick = async () => {
+      const i = Number(b.dataset.i)
+      document.querySelectorAll<HTMLButtonElement>('.gate-opts .ff-opt').forEach((x) => {
+        x.disabled = true
+      })
+      let correct = false
+      try {
+        const r = (await (
+          await fetch(`/api/landmark/${encodeURIComponent(l.id)}/trivia`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ answer: i }),
+          })
+        ).json()) as { correct?: boolean }
+        correct = r.correct === true
+      } catch {
+        // Network trouble must not brick the demo: let them through and let the
+        // claim endpoint be the judge.
+        correct = true
+      }
+
+      if (correct) {
+        b.classList.add('right')
+        pendingAnswer = i
+        if (note) {
+          note.hidden = false
+          note.textContent = 'Right — opening the camera.'
+        }
+        setTimeout(() => {
+          $('modal').setAttribute('hidden', '')
+          onPass()
+        }, 650)
+      } else {
+        b.classList.add('wrong')
+        if (note) {
+          note.hidden = false
+          note.textContent = 'Not that one. Look around and try again.'
+        }
+        setTimeout(() => {
+          document.querySelectorAll<HTMLButtonElement>('.gate-opts .ff-opt').forEach((x) => {
+            x.disabled = false
+            x.classList.remove('wrong')
+          })
+        }, 900)
+      }
+    }
+  })
+}
+
+/* ---------------- the place in 3D (§3.9) ---------------- */
+
+function splatHtml(l: LandmarkState): string {
+  if (l.splatState === 'ready' && l.splatUrl) {
+    return (
+      `<div class="splat ready">` +
+      `<b>This place exists in 3D.</b>` +
+      `<span>Reconstructed from ${l.splatPhotos} of its photographs.</span>` +
+      `<a class="claim" href="/splat.html?id=${encodeURIComponent(l.id)}">Walk around it →</a>` +
+      `</div>`
+    )
+  }
+  if (l.photoCount === 0) return ''
+  if (l.splatState === 'pending') {
+    return `<div class="splat"><b>Rebuilding this place in 3D…</b><span>Takes a few minutes. It will appear here.</span></div>`
+  }
+  if (l.splatNeeds > 0) {
+    const pct = Math.round(((l.photoCount || 0) / (l.photoCount + l.splatNeeds)) * 100)
+    return (
+      `<div class="splat">` +
+      `<b>${l.splatNeeds} more photograph${l.splatNeeds === 1 ? '' : 's'} until this place can be rebuilt in 3D</b>` +
+      `<span class="splat-bar"><i style="width:${pct}%"></i></span>` +
+      `<span>Shoot it from a different angle than the ones above.</span>` +
+      `</div>`
+    )
+  }
+  return (
+    `<div class="splat">` +
+    `<b>Enough photographs to rebuild this place in 3D.</b>` +
+    `<span>${l.photoCount} images, from ${l.claimCount} visit${l.claimCount === 1 ? '' : 's'}.</span>` +
+    `<button id="splatBtn" class="claim">Build the 3D model</button>` +
+    `<a class="splat-dl" href="/api/landmark/${encodeURIComponent(l.id)}/photos.zip">or download the ${l.photoCount} photos</a>` +
+    `<p id="splatMsg" class="splat-msg"></p>` +
+    `</div>`
+  )
+}
+
+function wireSplat(l: LandmarkState): void {
+  const btn = document.getElementById('splatBtn') as HTMLButtonElement | null
+  if (!btn) return
+  btn.onclick = async () => {
+    btn.disabled = true
+    btn.textContent = 'Starting…'
+    const msg = document.getElementById('splatMsg')
+    try {
+      const r = (await (
+        await fetch(`/api/landmark/${encodeURIComponent(l.id)}/generate-splat`, { method: 'POST' })
+      ).json()) as SplatResponse
+      if (msg) msg.textContent = r.message
+      btn.textContent = r.ok ? 'Reconstructing…' : 'Build the 3D model'
+      btn.disabled = r.ok
+    } catch {
+      if (msg) msg.textContent = 'Could not reach the server.'
+      btn.disabled = false
+      btn.textContent = 'Build the 3D model'
+    }
+  }
 }
 
 /* ---------------- walking route (§3.10) ---------------- */
@@ -366,6 +506,7 @@ $('camera').addEventListener('change', async (e) => {
           accuracy: here?.accuracy,
           photo: dataUrl,
           analysis,
+          triviaAnswer: pendingAnswer,
         }),
       })
     ).json()) as ClaimResponse
@@ -455,6 +596,14 @@ function connect(): void {
       }
     } else if (m.t === 'tick') {
       paintColourbar(m.stats.city.palette)
+    } else if (m.t === 'splat') {
+      const l = landmarks.find((x) => x.id === m.landmarkId)
+      if (l) {
+        l.splatState = m.state
+        l.splatUrl = m.splatUrl
+      }
+      // If you are looking at the place that just finished, show it at once.
+      if (openId === m.landmarkId && m.state !== 'pending') void openSheet(m.landmarkId)
     }
   }
   ws.onclose = () => setTimeout(connect, 1500)

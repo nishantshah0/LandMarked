@@ -5,10 +5,14 @@
 // the question must be about the *category* (murals, memorials, fountains in
 // general), never an invented specific "fact" about that exact spot.
 
+import { CFG } from '../shared/config'
+import { env, loadEnv } from '../shared/env'
 import { allLandmarks, setFunFact } from './db'
 
-const KEY = process.env.ANTHROPIC_API_KEY ?? ''
-const MODEL = process.env.FUNFACT_MODEL ?? 'claude-sonnet-5'
+loadEnv()
+
+const KEY = (): string => env('ANTHROPIC_API_KEY')
+const MODEL = (): string => env('FUNFACT_MODEL') || 'claude-sonnet-5'
 
 interface FunFact {
   question: string
@@ -20,12 +24,12 @@ async function generate(name: string, category: string, description: string | nu
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
-      'x-api-key': KEY,
+      'x-api-key': KEY(),
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: MODEL,
+      model: MODEL(),
       max_tokens: 300,
       system:
         'You write short, fun, surprising multiple-choice trivia for a city-exploration game. ' +
@@ -62,12 +66,17 @@ async function generate(name: string, category: string, description: string | nu
 }
 
 async function main(): Promise<void> {
-  if (!KEY) {
+  if (!KEY()) {
     console.log('[funfacts] ANTHROPIC_API_KEY not set — skipping (the app works fine without them)')
     process.exit(0)
   }
-  const todo = allLandmarks().filter((l) => !l.funFact)
-  console.log(`[funfacts] generating for ${todo.length} landmarks…`)
+  // Tier 3 first: on those the question is the claim gate, not flavour, so if
+  // this run is interrupted the gated places are the ones already covered.
+  const todo = allLandmarks()
+    .filter((l) => !l.funFact)
+    .sort((a, b) => b.tier - a.tier)
+  const gated = todo.filter((l) => l.tier >= CFG.triviaGateMinTier).length
+  console.log(`[funfacts] generating for ${todo.length} landmarks (${gated} of them gated)…`)
   let done = 0
   for (const l of todo) {
     const f = await generate(l.name, l.category, l.description)

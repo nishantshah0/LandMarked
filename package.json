@@ -8,10 +8,15 @@
     "build": "vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "seed": "tsx server/seed.ts",
+    "funfacts": "tsx server/funfacts.ts",
+    "splat": "tsx server/splat.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@sparkjsdev/spark": "^2.1.0",
+    "@types/three": "^0.185.4",
     "maplibre-gl": "^5.0.0",
+    "three": "^0.185.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

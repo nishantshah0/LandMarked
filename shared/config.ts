@@ -10,6 +10,17 @@ export const VENUE = {
   radiusM: 250, // generous: shipping containers, GPS drifts
 }
 
+/** The venue is tier 3, so its camera is trivia-gated — and unlike every other
+ *  landmark its question is written by hand rather than batch-generated. If the
+ *  generator never runs, other iconic places just fall back to ungated; the one
+ *  place the live demo depends on must always have a real gate. Change this
+ *  alongside VENUE, and keep it checkable by looking around the room. */
+export const VENUE_TRIVIA = {
+  question: 'Stackt Market is built almost entirely out of what?',
+  options: ['Shipping containers', 'Reclaimed streetcars', 'Grain silos', 'Scaffolding'],
+  correctIndex: 0,
+}
+
 /** Tight bbox around the venue. One neighbourhood, never the whole GTA —
  *  thirty claims across a city reads as abandoned; across a few blocks it
  *  reads as a scene. */
@@ -35,6 +46,12 @@ export const CFG = {
   visionMinConfidence: 60,
   broadcastMs: 2_000,
   timeline: { bucketMs: 15 * 60_000, maxBuckets: 32 },
+  /** Tier at or above which the camera is gated behind the landmark's question.
+   *  Tiers below this keep the question as after-the-fact flavour. */
+  triviaGateMinTier: 3,
+  /** Photographs a place needs before its archive is worth reconstructing.
+   *  Structure-from-motion wants many angles; below this it will not solve. */
+  splatMinPhotos: 8,
 } as const
 
 export type Tier = 1 | 2 | 3

@@ -1,0 +1,15 @@
+# Secrets never belong in an image layer. (Node's loadEnvFile does not override
+# real environment variables, so Render's config would win anyway — but the key
+# should not be baked into the image regardless.)
+.env
+.env.*
+!.env.example
+
+# Mounted at runtime as a volume; copying a local archive in would shadow it.
+data/
+
+node_modules/
+web-dist/
+.git/
+.DS_Store
+*.log

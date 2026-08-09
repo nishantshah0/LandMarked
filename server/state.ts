@@ -4,6 +4,7 @@
 
 import { CFG, TIER_POINTS, type Tier } from '../shared/config'
 import { blend, describe, hex } from '../shared/palette'
+import { isGated, parseTrivia, publicTrivia } from '../shared/trivia'
 import type {
   CityColour,
   Claim,
@@ -54,8 +55,15 @@ export function currentOwner(landmarkId: string, now: number): Claim | null {
 export function stateOf(l: Landmark, now: number): LandmarkState {
   const owner = currentOwner(l.id, now)
   const mine = photosByLandmark.get(l.id) ?? []
+
+  // A gated place sends its question without the answer; an ungated one sends
+  // the whole thing, because there the question is only flavour.
+  const gated = isGated(l)
+  const trivia = parseTrivia(l.funFact)
+  const { funFact: _raw, ...rest } = l
+
   return {
-    ...l,
+    ...rest,
     owner: owner
       ? {
           handle: owner.handle,
@@ -66,6 +74,10 @@ export function stateOf(l: Landmark, now: number): LandmarkState {
       : null,
     claimCount: claims.reduce((n, c) => n + (c.landmarkId === l.id ? 1 : 0), 0),
     palette: blend(mine),
+    funFact: gated ? null : l.funFact,
+    trivia: gated && trivia ? publicTrivia(trivia) : null,
+    gated,
+    splatNeeds: Math.max(0, CFG.splatMinPhotos - l.photoCount),
   }
 }
 

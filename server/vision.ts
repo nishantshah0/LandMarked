@@ -6,10 +6,14 @@
 // and the attempt is logged as unverified. A demo must never hinge on someone
 // else's uptime.
 
-const KEY = process.env.ANTHROPIC_API_KEY ?? ''
-const MODEL = process.env.VISION_MODEL ?? 'claude-sonnet-5'
+import { env } from '../shared/env'
 
-export const visionEnabled = (): boolean => KEY.length > 0
+// Read lazily, never at module scope: that way .env is loaded by the time the
+// key is wanted, whatever order the imports happen to evaluate in.
+const KEY = (): string => env('ANTHROPIC_API_KEY')
+const MODEL = (): string => env('VISION_MODEL') || 'claude-sonnet-5'
+
+export const visionEnabled = (): boolean => KEY().length > 0
 
 export interface Verdict {
   checked: boolean
@@ -39,13 +43,13 @@ export async function verifyPhoto(
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'x-api-key': KEY,
+        'x-api-key': KEY(),
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: MODEL,
+        model: MODEL(),
         max_tokens: 200,
         system:
           'You verify whether a photograph was plausibly taken at a specific real-world place. ' +

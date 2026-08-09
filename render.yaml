@@ -19,6 +19,10 @@ services:
       # GPS + duplicate-photo checks alone and are logged as unverified.
       - key: ANTHROPIC_API_KEY
         sync: false
+      # Optional: lets you register a finished 3D model over HTTP mid-event
+      # instead of shelling into the box. Any long random string.
+      - key: ADMIN_TOKEN
+        sync: false
     disk:
       name: seen-data
       mountPath: /app/data

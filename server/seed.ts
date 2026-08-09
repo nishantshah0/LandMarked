@@ -1,7 +1,7 @@
 // Pulls real landmarks from OpenStreetMap once, cleans them, and writes them to
 // sqlite. Run before the event, never at request time:  npm run seed
 
-import { BBOX, ICONIC, MAJOR, MAX_LANDMARKS, VENUE, type Tier } from '../shared/config'
+import { BBOX, ICONIC, MAJOR, MAX_LANDMARKS, VENUE, VENUE_TRIVIA, type Tier } from '../shared/config'
 import { haversineM } from '../shared/geo'
 import type { Landmark } from '../shared/types'
 import { insertLandmarks, landmarkCount } from './db'
@@ -105,6 +105,9 @@ async function main(): Promise<void> {
       description: el.tags?.description ?? el.tags?.inscription ?? null,
       photoCount: 0,
       funFact: null,
+      splatUrl: null,
+      splatState: 'none',
+      splatPhotos: 0,
     })
   }
 
@@ -136,7 +139,10 @@ async function main(): Promise<void> {
     category: 'venue',
     description: 'The hackathon itself. Claimable from inside the building.',
     photoCount: 0,
-    funFact: null,
+    funFact: JSON.stringify(VENUE_TRIVIA),
+    splatUrl: null,
+    splatState: 'none',
+    splatPhotos: 0,
   })
 
   insertLandmarks(near)

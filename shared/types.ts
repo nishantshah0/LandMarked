@@ -1,6 +1,9 @@
 import type { Tier } from './config'
 import type { PhotoAnalysis } from './palette'
 
+/** How far along a landmark's crowd-photo 3D reconstruction is. */
+export type SplatState = 'none' | 'pending' | 'ready' | 'failed'
+
 export interface Landmark {
   id: string
   name: string
@@ -12,6 +15,17 @@ export interface Landmark {
   photoCount: number
   /** JSON {question, options, correctIndex} — batch-generated flavor, or null */
   funFact: string | null
+  /** Where the finished splat lives: /splats/x.ply, or an external URL */
+  splatUrl: string | null
+  splatState: SplatState
+  /** how many photographs the current model was reconstructed from */
+  splatPhotos: number
+}
+
+/** The half of a question a gated client is allowed to see. */
+export interface TriviaPublic {
+  question: string
+  options: string[]
 }
 
 /** A photograph, kept forever. Claims rotate; the archive only grows. */
@@ -40,12 +54,25 @@ export interface Claim {
   distanceM: number
 }
 
-/** A landmark plus live ownership, which is derived from claims, never stored. */
-export interface LandmarkState extends Landmark {
+/** A landmark plus live ownership, which is derived from claims, never stored.
+ *
+ *  `funFact` is deliberately dropped and re-added: on a trivia-gated landmark
+ *  the raw JSON carries `correctIndex`, and shipping the answer to the client
+ *  that has to prove it knows the answer would make the gate decorative. Gated
+ *  places send `trivia` (question + options only) and the server marks it. */
+export interface LandmarkState extends Omit<Landmark, 'funFact'> {
   owner: { handle: string; avatarColor: string; expiresAt: number; photoId: string } | null
   claimCount: number
   /** the place's own colour, blended from every photo ever taken there */
   palette: [number, number, number][]
+  /** full question JSON — ungated places only, where it is pure flavour */
+  funFact: string | null
+  /** answer-free question — gated places only */
+  trivia: TriviaPublic | null
+  /** whether the camera is locked behind that question */
+  gated: boolean
+  /** photographs still needed before this place can be reconstructed */
+  splatNeeds: number
 }
 
 export interface FeedEntry {
@@ -107,6 +134,7 @@ export type RejectReason =
   | 'vision_reject'
   | 'no_photo'
   | 'bad_handle'
+  | 'trivia_failed'
 
 export const REJECT_TEXT: Record<RejectReason, string> = {
   too_far: 'Too far away',
@@ -116,6 +144,7 @@ export const REJECT_TEXT: Record<RejectReason, string> = {
   vision_reject: "Photo doesn't look like this place",
   no_photo: 'No photo received',
   bad_handle: 'Pick a handle first',
+  trivia_failed: 'Wrong answer on an iconic place',
 }
 
 export type ClientMsg = { t: 'hello'; handle: string | null }
@@ -131,6 +160,7 @@ export type ServerMsg =
     }
   | { t: 'claimed'; landmark: LandmarkState; entry: FeedEntry }
   | { t: 'tick'; leaders: LeaderRow[]; stats: DashStats; now: number }
+  | { t: 'splat'; landmarkId: string; landmarkName: string; state: SplatState; splatUrl: string | null }
 
 export interface ClaimResponse {
   ok: boolean
@@ -150,6 +180,13 @@ export interface ClaimResponse {
 export interface ArchiveResponse {
   landmark: LandmarkState
   photos: Photo[]
+}
+
+export interface SplatResponse {
+  ok: boolean
+  state: SplatState
+  splatUrl: string | null
+  message: string
 }
 
 export type { PhotoAnalysis }
