@@ -34,7 +34,7 @@ function askHandle(): string | null {
   return getHandle()
 }
 function paintHandle(): void {
-  $('meBtn').textContent = getHandle() ?? 'Who are you?'
+  $('meBtn').textContent = getHandle() ?? 'You'
 }
 
 /* ---------------- state ---------------- */
@@ -579,14 +579,15 @@ function boardHtml(): string {
   }
   const rows = boardTab === 'holding' ? standings.holding : standings.visited
   const value = (l: LeaderRow): number => (boardTab === 'holding' ? l.holding : l.visited)
-  const unit = boardTab === 'holding' ? 'held' : 'places'
+  const unit = (n: number): string =>
+    boardTab === 'holding' ? 'held' : n === 1 ? 'station' : 'stations'
   const me = getHandle()
   const myIndex = me ? rows.findIndex((r) => r.handle === me) : -1
 
   const row = (l: LeaderRow, i: number): string =>
     `<li class="${l.handle === me ? 'me' : ''}"><span class="rk">${i + 1}</span>` +
     `<i class="dot" style="background:${l.avatarColor}"></i>` +
-    `<span class="nm">${l.handle}</span><b>${value(l)}<span class="unit"> ${unit}</span></b></li>`
+    `<span class="nm">${l.handle}</span><b>${value(l)}<span class="unit"> ${unit(value(l))}</span></b></li>`
 
   const top = rows.slice(0, 10).map(row).join('')
   // Outside the top ten, pin your own row on the end rather than hiding it.
@@ -614,7 +615,14 @@ function myStandingHtml(): string {
   }
   const row = rows[i]
   const value = boardTab === 'holding' ? row.holding : row.visited
-  const unit = boardTab === 'holding' ? (value === 1 ? 'place held' : 'places held') : 'places visited'
+  const unit =
+    boardTab === 'holding'
+      ? value === 1
+        ? 'place held'
+        : 'places held'
+      : value === 1
+        ? 'station collected'
+        : 'stations collected'
   return (
     `<div class="boardme"><i class="dot" style="background:${row.avatarColor}"></i>` +
     `<span>You are <b>#${i + 1}</b> of ${standings.players}</span>` +
@@ -628,7 +636,7 @@ function paintBoard(): void {
   panel.innerHTML =
     `<div class="boardtabs">` +
     `<button class="btab${boardTab === 'holding' ? ' on' : ''}" data-t="holding">Holding now</button>` +
-    `<button class="btab${boardTab === 'visited' ? ' on' : ''}" data-t="visited">Places visited</button>` +
+    `<button class="btab${boardTab === 'visited' ? ' on' : ''}" data-t="visited">Stations collected</button>` +
     `</div>` +
     myStandingHtml() +
     boardHtml() +
@@ -751,15 +759,27 @@ async function showRoute(to: string): Promise<void> {
         src.setData(data)
       } else {
         map.addSource('route', { type: 'geojson', data })
+        // Casing first, so the signal-yellow line above always has an edge to
+        // sit against — a light basemap would otherwise swallow it.
+        map.addLayer({
+          id: 'route-casing',
+          type: 'line',
+          source: 'route',
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#17181c', 'line-width': 9, 'line-opacity': 0.9 },
+        })
         map.addLayer({
           id: 'route',
           type: 'line',
           source: 'route',
           layout: { 'line-cap': 'round', 'line-join': 'round' },
           paint: {
-            'line-color': '#17181c',
-            'line-width': 4,
-            'line-opacity': 0.75,
+            // Drawn as a transit line rather than a hairline: a dark casing is
+            // added below this layer, so the route reads as a route on a busy
+            // grey basemap instead of another street.
+            'line-color': '#f8c300',
+            'line-width': 5,
+            'line-opacity': 1,
             'line-dasharray': r.fallback ? [1.5, 2] : [1, 0],
           },
         })
@@ -780,10 +800,13 @@ async function showRoute(to: string): Promise<void> {
 }
 
 function clearRoute(): void {
-  if (mapReady && map.getLayer('route')) {
-    map.removeLayer('route')
-    map.removeSource('route')
+  if (!mapReady) return
+  // Both layers must go before the source: removeSource throws while anything
+  // still references it, and the route is drawn as a casing plus a line.
+  for (const id of ['route', 'route-casing']) {
+    if (map.getLayer(id)) map.removeLayer(id)
   }
+  if (map.getSource('route')) map.removeSource('route')
 }
 
 function closeSheet(): void {

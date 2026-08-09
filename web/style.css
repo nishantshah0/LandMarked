@@ -1055,3 +1055,284 @@ body {
     clip-path: circle(0% at 50% 50%);
   }
 }
+
+/* ============================================================
+   CIVIC SIGNAGE
+   The city's landmarks read as a transit network and you collect
+   stations. Deliberately restrained on colour: the existing thesis is
+   that a near-grey base lets the photographs carry every hue, so this
+   layer borrows signage *language* — condensed caps, destination
+   blinds, tile blocks, route line — and exactly one signal yellow,
+   used only for "you are here". Palettes and heat keep their monopoly
+   on colour.
+   ============================================================ */
+
+:root {
+  /* Signage faces are grotesques; condensed where the platform has one.
+     Weight and tight tracking carry the look when it doesn't. */
+  --display: 'Helvetica Neue', Inter, ui-sans-serif, system-ui, sans-serif;
+  --signal: #f8c300; /* the one accent that isn't data */
+  --blind: #17181c; /* destination-blind ground */
+}
+
+/* ---------- destination blind: the sheet header ---------- */
+
+.sheet-head {
+  background: var(--blind);
+  color: var(--paper);
+  border-radius: 12px;
+  padding: 13px 14px;
+  margin: 0 -2px 14px;
+  align-items: center;
+}
+
+.sheet-head h2 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 21px;
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+  text-transform: uppercase;
+  color: var(--paper);
+  padding-right: 8px;
+}
+
+.sheet-head .meta {
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--signal);
+  opacity: 1;
+  margin-top: 5px;
+}
+
+/* the category mark sits on dark now */
+.sheet-head .cat-icon {
+  filter: brightness(0) invert(1);
+  opacity: 0.9;
+}
+
+/* ---------- NEXT STOP readout ---------- */
+
+.dist {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: rgba(247, 245, 239, 0.1);
+  border: 1px solid rgba(247, 245, 239, 0.28);
+  color: var(--paper);
+  border-radius: 6px;
+  padding: 7px 9px;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.dist::before {
+  content: 'NEXT STOP';
+  display: block;
+  font-size: 8px;
+  letter-spacing: 0.16em;
+  opacity: 0.62;
+  margin-bottom: 2px;
+}
+
+.dist.near {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--blind);
+}
+
+.dist.far {
+  color: var(--paper);
+  border-color: rgba(247, 245, 239, 0.28);
+}
+
+/* ---------- tile-block section headings ---------- */
+
+.archive-h,
+.boardtitle {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.archive-h {
+  font-size: 10px;
+  color: var(--paper);
+  background: var(--blind);
+  display: inline-block;
+  border-radius: 4px;
+  padding: 5px 9px;
+  opacity: 1;
+  margin: 20px 0 10px;
+}
+
+.boardtitle {
+  font-size: 15px;
+  border-bottom: 3px solid var(--blind);
+  padding-bottom: 7px;
+}
+
+/* ---------- signage buttons ---------- */
+
+.claim {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 6px;
+}
+
+.btab {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 6px;
+}
+
+.chip {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* ---------- the wordmark as a roundel ---------- */
+
+.brand {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+}
+
+.brand em {
+  font-family: var(--display);
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+/* ---------- standings as a station tally ---------- */
+
+.board .rk {
+  font-family: var(--display);
+  font-weight: 800;
+}
+
+.board b,
+.boardme .v {
+  font-family: var(--display);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.boardme {
+  border-radius: 6px;
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--blind);
+  font-family: var(--display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.boardme .dot {
+  outline: 2px solid rgba(23, 24, 28, 0.25);
+}
+
+/* ---------- the owner strip reads like a service notice ---------- */
+
+.owner {
+  font-family: var(--display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-left-width: 5px;
+  border-radius: 0 6px 6px 0;
+}
+
+/* ---------- gate flag: a service alert ---------- */
+
+.gate-flag {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 6px;
+  border-left: 5px solid var(--accent);
+}
+
+/* Uppercase + tracking made the header furniture wider than the phone it has
+   to fit on: the tagline stacked four lines deep and the chip row ran off the
+   right edge. Both are the cost of the signage type, so both get handled here
+   rather than by softening the type. */
+
+.top {
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.brand {
+  flex: 0 0 auto;
+  line-height: 1.05;
+}
+
+.brand em {
+  white-space: nowrap;
+  font-size: 8px;
+  letter-spacing: 0.09em;
+  margin-top: 3px;
+}
+
+/* On a phone the wordmark alone carries it; the tagline is the first thing to
+   go rather than the chips, which are navigation. */
+@media (max-width: 560px) {
+  .brand em {
+    display: none;
+  }
+}
+
+.top-right {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.top-right::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  max-width: none;
+}
+
+/* The colour label sat at the very top and the signage chips grew into it.
+   Drop it clear of the header rather than shrinking the navigation. */
+.colourlabel {
+  top: 58px;
+}
+
+/* Chips start at the left so the first one is never scrolled out of reach. */
+.top-right {
+  justify-content: flex-start;
+}
