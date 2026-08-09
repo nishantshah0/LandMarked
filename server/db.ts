@@ -43,6 +43,11 @@ try {
 } catch {
   // column already exists
 }
+try {
+  db.exec('ALTER TABLE landmarks ADD COLUMN splat_url TEXT')
+} catch {
+  // column already exists
+}
 
 function reopen(): void {
   try {
@@ -92,6 +97,7 @@ interface LRow {
   description: string | null
   photo_count: number
   fun_fact: string | null
+  splat_url: string | null
 }
 
 export function allLandmarks(): Landmark[] {
@@ -106,12 +112,19 @@ export function allLandmarks(): Landmark[] {
     description: r.description,
     photoCount: Number(r.photo_count),
     funFact: r.fun_fact ?? null,
+    splatUrl: r.splat_url ?? null,
   }))
 }
 
 export function setFunFact(id: string, json: string): void {
   guard(() => {
     db.prepare('UPDATE landmarks SET fun_fact = ? WHERE id = ?').run(json, id)
+  })
+}
+
+export function setSplatUrl(id: string, url: string): void {
+  guard(() => {
+    db.prepare('UPDATE landmarks SET splat_url = ? WHERE id = ?').run(url, id)
   })
 }
 

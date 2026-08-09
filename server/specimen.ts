@@ -66,6 +66,7 @@ function copyLandmarksFromReal(): void {
     description: r.description,
     photoCount: 0,
     funFact: null,
+    splatUrl: null,
   }))
   insertLandmarks(lms)
   console.log(`[specimen] copied ${lms.length} landmarks from the real instance`)

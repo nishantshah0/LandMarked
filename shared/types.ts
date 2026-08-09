@@ -12,6 +12,8 @@ export interface Landmark {
   photoCount: number
   /** JSON {question, options, correctIndex} — batch-generated flavor, or null */
   funFact: string | null
+  /** embed URL of a real 3D reconstruction built from photos of this place */
+  splatUrl: string | null
 }
 
 /** A photograph, kept forever. Claims rotate; the archive only grows. */

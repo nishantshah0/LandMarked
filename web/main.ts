@@ -228,6 +228,12 @@ async function openSheet(id: string): Promise<void> {
       <button id="dirBtn" class="claim ghost2">Walk me there</button>
     </div>
     <div id="routeInfo" class="routeinfo"></div>
+    ${
+      l.splatUrl
+        ? `<h3 class="archive-h">Walk around it — 3D, built from photographs</h3>
+           <iframe class="splat" src="${l.splatUrl}" loading="lazy" allow="fullscreen" title="3D model of ${l.name}"></iframe>`
+        : ''
+    }
     ${funFactHtml(l.funFact)}
     <h3 class="archive-h">Everything anyone has photographed here</h3>
     ${photoStrip(data.photos)}

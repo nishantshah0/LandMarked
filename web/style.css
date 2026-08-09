@@ -428,6 +428,14 @@ body {
   min-height: 16px;
 }
 
+.splat {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: none;
+  border-radius: 12px;
+  background: #17181c;
+}
+
 .funfact {
   margin: 12px 0 2px;
   border: 1px solid var(--line);

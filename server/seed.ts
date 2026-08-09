@@ -105,6 +105,7 @@ async function main(): Promise<void> {
       description: el.tags?.description ?? el.tags?.inscription ?? null,
       photoCount: 0,
       funFact: null,
+      splatUrl: null,
     })
   }
 
@@ -137,6 +138,7 @@ async function main(): Promise<void> {
     description: 'The hackathon itself. Claimable from inside the building.',
     photoCount: 0,
     funFact: null,
+    splatUrl: null,
   })
 
   insertLandmarks(near)
